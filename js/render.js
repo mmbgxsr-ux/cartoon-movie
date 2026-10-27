@@ -137,15 +137,15 @@ const ease = u => { u = u < 0 ? 0 : u > 1 ? 1 : u; return u * u * (3 - 2 * u); }
 const STRIDE = 22, XF = 0.45; const isPP = n => SH.walk.pp && n >= 3 && n < 6;   // 3–5 إطارات: ذهاب وإياب؛ 6 فأكثر: دورة مشي كاملة تتكرر (ساق يمين ثم يسار)
 function strideNow() { const n = frames.walk ? frames.walk.length : 9; return isPP(n) ? 352 / (2 * n - 2) : STRIDE; }
 function blit(name, i, x, scl, dy, alpha, o) {
-  const fr = frames[name], cfg = SH[name]; if (!fr || alpha <= 0.002) return; o = o || {};
+  const fr = frames[name], cfg = SH[name]; if (!fr || alpha <= 0.002) return; o = o || {}; const FL = o.flip != null ? o.flip : (typeof FLIP !== 'undefined' && FLIP);
   const f = fr[((i % fr.length) + fr.length) % fr.length], sc = cfg.th * 0.96 / fr.ch * UI.size() * scl * GSC;
   ctx.save(); ctx.globalAlpha = Math.min(1, alpha);
   ctx.translate(x + (o.dx || 0), GROUND + dy + (o.dy || 0));                      // نقطة الارتكاز عند القدمين
   if (o.rot) ctx.rotate(o.rot); if (o.sx || o.sy) ctx.scale(o.sx || 1, o.sy || 1);
   { // ظل ساقط واقعي على الأرض من شكل الشخصية نفسه
-    const L = LIGHT[CUR_BG] != null ? LIGHT[CUR_BG] : .55; ctx.save(); ctx.globalAlpha = Math.min(1, alpha) * .40; ctx.transform(1, 0, -L * .5, -.11, 0, 0); if ('filter' in ctx) ctx.filter = 'blur(' + Math.max(2, 5 * sc).toFixed(1) + 'px)';
+    const L = LIGHT[CUR_BG] != null ? LIGHT[CUR_BG] : .55; ctx.save(); ctx.globalAlpha = Math.min(1, alpha) * .40; ctx.transform(1, 0, -L * .5, -.11, 0, 0); if (FL) ctx.scale(-1, 1); if ('filter' in ctx) ctx.filter = 'blur(' + Math.max(2, 5 * sc).toFixed(1) + 'px)';
     ctx.drawImage(silh(f), -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc); ctx.restore(); }
-  if (f.lift) ctx.translate(0, -f.lift * sc);   // إطار في الهواء (جري/قفز): الظل يبقى على الأرض والجسم يرتفع
+  if (f.lift) ctx.translate(0, -f.lift * sc); if (FL) ctx.scale(-1, 1);   // إطار في الهواء (جري/قفز): الظل يبقى على الأرض والجسم يرتفع
   ctx.drawImage(CEL() && !greenOn() ? inked(f) : tinted(f), -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc);
   if ($('cRim') && $('cRim').checked && !greenOn()) { const rm = rimOf(f); if (rm) ctx.drawImage(rm, -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc); }
   if (o.mouth && f.mouth && f.mouth.on && !cfg.nm && $('cMouth').checked) paintMouth(ctx, f, sc, (f.mouth.x - f.ax) * sc, (f.mouth.y - f.bb.y1) * sc, M, o.mouth * alpha);

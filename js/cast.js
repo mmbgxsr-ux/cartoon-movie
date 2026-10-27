@@ -15,6 +15,11 @@ const CAST_PRESET = [
 ];
 let CAST = (() => { try { const a = JSON.parse(Store.getItem(CAST_K) || 'null'); if (Array.isArray(a) && a.length && a.every(x => x && x.id)) return a; } catch (_) {} return [Object.assign({}, CAST_GUIDE)]; })();
 if (!CAST.some(c => c.id === 'guide')) CAST.unshift(Object.assign({}, CAST_GUIDE));
+// اتجاه النظر: الصور الأصلية تنظر لجهة واحدة (الافتراضي يمين). المستمعون يلتفتون نحو المتحدث، والمتحدث نحو أقرب مستمع، بقلب الصورة أفقيًا
+let FLIP = false;
+const FACE_K = 'cartoonFace1';
+let FACE_BASE = (() => { try { return Store.getItem(FACE_K) === 'l' ? -1 : 1; } catch (_) { return 1; } })();
+const faceDir = c => (c.face === 'l' ? -1 : c.face === 'r' ? 1 : FACE_BASE);
 const castSave = () => { try { Store.setItem(CAST_K, JSON.stringify(CAST)); } catch (_) {} };
 const castById = id => CAST.find(c => c.id === id) || CAST[0];
 const castByName = n => { n = (n || '').trim(); if (!n) return null; return CAST.find(c => c.name === n) || CAST.find(c => c.name.includes(n) || n.includes(c.name)) || null; };
@@ -130,17 +135,19 @@ drawChar = function (s, tt) {
   list.forEach((id, i) => { const p = s.pos && CAST_POS[s.pos[id]]; if (p != null) xs[i] = W * p; });
   const _sp = speakerAt(s, tt) || s.spk, spk = _sp && list.includes(_sp) ? _sp : list[0], sx = xs[list.indexOf(spk)];
   const m = Math.min(.999, Math.max(0, mOf(s, tt)));
+  const face = !s.noFace && list.length > 1, flipFor = (id, fx, tx) => face && Math.sign(tx - fx) * faceDir(castById(id)) < 0;
+  const others = list.map((id, i) => xs[i]).filter((x, i) => list[i] !== spk), near = others.length ? others.reduce((a, b) => Math.abs(b - sx) < Math.abs(a - sx) ? b : a) : sx;
   list.forEach((id, i) => {
     if (id === spk) return; const c = wearOf(s, id);
     withCast(c, () => {
       const fr = frames.talk; if (!fr) return; const sv = { open: M.open, wide: M.wide, round: M.round, act: M.act }; M.open = M.wide = M.round = M.act = 0;
       const br = Math.sin(clock * 2.1 + i * 1.7);
-      blit('talk', 15 % fr.length, xs[i], c.scale || 1, 0, 1, { sy: 1 + .008 * br, sx: 1 - .004 * br, rot: (sx > xs[i] ? 1 : -1) * .01 + Math.sin(clock * .8 + i) * .003, dx: Math.sin(clock * .55 + i * 2) * 2.4, mouth: 1 });
+      blit('talk', 15 % fr.length, xs[i], c.scale || 1, 0, 1, { flip: flipFor(id, xs[i], sx), sy: 1 + .008 * br, sx: 1 - .004 * br, rot: (sx > xs[i] ? 1 : -1) * .01 + Math.sin(clock * .8 + i) * .003, dx: Math.sin(clock * .55 + i * 2) * 2.4, mouth: 1 });
       Object.assign(M, sv);
     });
   });
   const c = wearOf(s, spk);
-  withCast(c, () => { const os = UI.size; UI.size = () => os() * (c.scale || 1); try { drawStand(s, m, sx, 1); } finally { UI.size = os; } });
+  withCast(c, () => { const os = UI.size; UI.size = () => os() * (c.scale || 1); FLIP = flipFor(spk, sx, near); try { drawStand(s, m, sx, 1); } finally { UI.size = os; FLIP = false; } });
 };
 
 // ----- واجهة تبويب «الطاقم» -----
@@ -175,6 +182,7 @@ drawChar = function (s, tt) {
       const colr = (lab, key) => el('label', { style: 'display:inline-flex;align-items:center;gap:4px;font-size:13px' }, [document.createTextNode(lab), el('input', { type: 'color', value: c[key] || '#444444', style: 'width:34px;height:26px;padding:0;border:0;background:none', onchange() { c[key] = this.value; save(); } }), el('button', { type: 'button', textContent: '↺', title: 'الأصلي', style: 'padding:2px 7px;background:#3a4656;font-size:12px', onclick() { c[key] = ''; render(); castSave(); } })]);
       const acc = el('select'); CAST_ACC.forEach(([v, t]) => acc.appendChild(el('option', { value: v, textContent: t }))); acc.value = c.acc || ''; acc.onchange = () => { c.acc = acc.value; save(); };
       const accC = el('input', { type: 'color', value: c.accColor || '#f3ead2', style: 'width:34px;height:26px;padding:0;border:0;background:none', onchange() { c.accColor = this.value; save(); } });
+      const fc = el('select'); [['', 'اتجاه النظر: الافتراضي'], ['r', 'صورته تنظر لليمين'], ['l', 'صورته تنظر لليسار']].forEach(([v, t]) => fc.appendChild(el('option', { value: v, textContent: t }))); fc.value = c.face || ''; fc.onchange = () => { c.face = fc.value; castSave(); };
       const vo = el('select'); vo.appendChild(el('option', { value: '', textContent: 'صوت المشهد الافتراضي' })); CAST_VOICES.forEach(v => vo.appendChild(el('option', { value: v, textContent: 'صوت ' + v }))); vo.value = c.voice || ''; vo.onchange = () => { c.voice = vo.value; castSave(); };
       const sc = el('input', { type: 'range', min: .85, max: 1.15, step: .01, value: c.scale || 1, style: 'width:90px', oninput() { c.scale = +this.value; castSave(); } });
       const del = c.id === 'guide' ? el('span', { textContent: '(الأساسية)', style: 'color:#8ea0b5;font-size:12px' }) : el('button', { type: 'button', textContent: '✕', style: 'padding:4px 10px;background:#5a3a3a', onclick() { if (confirm('حذف ' + c.name + '؟')) { CAST.splice(i, 1); castSave(); render(); } } });
@@ -183,13 +191,16 @@ drawChar = function (s, tt) {
         el('div', { className: 'row', style: 'margin:0' }, [colr('القميص', 'top'), colr('البنطال', 'bottom')]),
         el('div', { className: 'row', style: 'margin:0' }, [acc, accC, el('span', { textContent: 'الحجم' }), sc]),
         layerRow(c),
-        el('div', { className: 'row', style: 'margin:0' }, [vo]),
+        el('div', { className: 'row', style: 'margin:0' }, [vo, fc]),
         el('div', { style: 'font-size:12px;color:#8ea0b5' }, [document.createTextNode('الأزياء البديلة (تُختار لكل مشهد من المحرر)')]),
         ...(c.alt || []).map((a, j) => altBox(c, a, j)),
         el('button', { type: 'button', textContent: '➕ زي بديل', style: 'align-self:flex-start;padding:4px 10px;background:#3a4656', onclick() { (c.alt = c.alt || []).push({ name: 'زي ' + (c.alt.length + 1), top: c.top || '', bottom: c.bottom || '', acc: c.acc || '', accColor: c.accColor || '#f3ead2', layer: '', layerColor: '#8a6a3a' }); castSave(); render(); } })])]));
     });
     previews.forEach(p => paint(p.cv, p.c));
   }
+  { const fs = el('select'); [['r', 'تنظر لليمين'], ['l', 'تنظر لليسار']].forEach(([v, t]) => fs.appendChild(el('option', { value: v, textContent: t }))); fs.value = FACE_BASE < 0 ? 'l' : 'r';
+    fs.onchange = () => { FACE_BASE = fs.value === 'l' ? -1 : 1; try { Store.setItem(FACE_K, fs.value); } catch (_) {} };
+    box.before(el('div', { className: 'row' }, [el('span', { textContent: 'الشخصية الأصلية في الصور:' }), fs, el('span', { textContent: '(تلتفت الشخصيات نحو بعضها تلقائيًا في مشاهد الحوار)', style: 'font-size:12px;color:#8ea0b5' })])); }
   document.getElementById('castAdd').onclick = () => { const n = CAST.length; CAST.push({ id: 'c' + Date.now().toString(36), name: 'شخصية ' + n, top: '#3d5a80', bottom: '#2b2f3a', acc: '', accColor: '#f3ead2', scale: 1, voice: '' }); castSave(); render(); };
   document.getElementById('castPreset').onclick = () => { if (CAST.length > 1 && !confirm('استبدال الطاقم الحالي بطاقم «فتح مصر»؟')) return; CAST = CAST_PRESET.map(c => Object.assign({}, c)); castSave(); render(); };
   render(); let tries = 0; const iv = setInterval(() => { if (frames.talk || ++tries > 40) { clearInterval(iv); previews.forEach(p => paint(p.cv, p.c)); } }, 500);

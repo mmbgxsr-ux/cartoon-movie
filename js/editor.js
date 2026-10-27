@@ -1,6 +1,6 @@
 (function () {
   const SK = 'cartoonScenes1', ACT = [['talk', 'حديث'], ['wave', 'تلويح'], ['point', 'إشارة'], ['think', 'تفكير'], ['sad', 'حزن'], ['awe', 'دهشة'], ['sit', 'جلوس'], ['joy', 'فرح'], ['pointup', 'إشارة للأعلى'], ['turn', 'التفات']];
-  const pick = s => JSON.parse(JSON.stringify({ h: s.h || '', bg: s.bg || 1, text: s.text || '', acts: s.acts || [[0, 'talk']], props: s.props || [], noWalk: !!s.noWalk, run: !!s.run, out: s.out, extra: s.extra, spk: s.spk, cast: s.cast, lines: s.lines, pos: s.pos, wear: s.wear }));
+  const pick = s => JSON.parse(JSON.stringify({ h: s.h || '', bg: s.bg || 1, text: s.text || '', acts: s.acts || [[0, 'talk']], props: s.props || [], noWalk: !!s.noWalk, run: !!s.run, out: s.out, extra: s.extra, spk: s.spk, cast: s.cast, lines: s.lines, pos: s.pos, wear: s.wear, noFace: s.noFace }));
   let ED = SHOTS.map(pick);
   const el = (t, p, c) => { const e = document.createElement(t); if (p) Object.assign(e, p); (c || []).forEach(x => e.appendChild(x)); return e; };
   const sel = (opts, val, fn) => { const s = el('select'); opts.forEach(([v, t]) => s.appendChild(el('option', { value: v, textContent: t }))); s.value = val; s.onchange = () => fn(s.value); return s; };
@@ -42,6 +42,7 @@
           if (c.alt && c.alt.length) g.push(sel([['', 'الزي الأساسي'], ...c.alt.map((a, k) => [String(k), a.name || ('زي ' + (k + 1))])], s.wear && s.wear[id] != null ? String(s.wear[id]) : '', v => { s.wear = Object.assign({}, s.wear); if (v === '') delete s.wear[id]; else s.wear[id] = +v; if (!Object.keys(s.wear).length) s.wear = undefined; }));
           items.push(el('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#1b2635;border-radius:8px;padding:4px 8px' }, g));
         });
+        if (present.length > 1) items.push(el('label', { style: 'font-size:13px' }, [el('input', { type: 'checkbox', checked: !!s.noFace, onchange() { s.noFace = this.checked || undefined; } }), document.createTextNode('بدون التفات (ثبات الاتجاه)')]));
         if (dup) items.push(el('span', { textContent: '⚠ شخصيتان في نفس الموضع', style: 'color:#ffb454;font-size:12px' }));
         return el('div', { className: 'row', style: 'align-items:center' }, items);
       })() : null;
