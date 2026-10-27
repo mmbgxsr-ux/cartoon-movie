@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>صانع الأفلام الكرتونية v53 (بالمصري + صوت ElevenLabs)</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header id="topBar"><div class="brand"><i>🎬</i><div>استوديو الفيلم الكرتوني<small>صانع أفلام تعليمية متحركة</small></div></div><span id="infoTop"></span><button id="bPlayTop" type="button">تشغيل</button></header>
+<main class="app"><section class="stage"><canvas id="c" width="1280" height="720"></canvas>
+<div id="bar"><div id="prog"></div></div>
+<div class="row"><span id="info">جاهز</span></div></section><section class="panel"><nav id="tabs"></nav>
+
+<div class="box">
+  <h3>1) الخلفيات (ارفع الصور الـ 15 دفعة واحدة)</h3>
+  <div class="row"><label class="f" id="lBg">اختر الخلفيات<input type="file" accept="image/*" multiple id="fBg"></label></div>
+  <div id="thumbs"></div>
+  <div class="row"><button id="bAuto" style="display:none">🤖 التعرّف على الخلفيات وترتيبها تلقائيًا</button><button id="bUndo" style="display:none;background:#5a3a3a">↩️ تراجع</button>
+    <label style="display:none"><input type="checkbox" id="cAutoBg"> تعرّف تلقائي بعد الرفع (مع مفتاح Gemini)</label></div>
+  <details><summary>تعيين خلفية كل مشهد (غيّر الرقم إذا اختلف الترتيب)</summary><div id="map"></div></details>
+  <details id="dGnd"><summary>ضبط موضع الشخصية لكل خلفية (اضغط على المكان الذي تقف فيه القدمان)</summary>
+    <div class="row"><select id="gSel"></select><span>الحجم</span><input type="range" id="gScale" min="0.8" max="1.2" step="0.01" value="1" style="flex:1;min-width:100px"><button id="gReset" type="button" style="background:#5a3a3a;font-size:13px;padding:4px 10px">إعادة هذه الخلفية</button></div>
+    <div class="row"><canvas id="gc" width="640" height="360" style="width:auto;max-width:100%;cursor:crosshair;touch-action:none"></canvas></div>
+    <div class="row" style="font-size:13px;color:#9cf">المستطيل الأزرق يمثّل حجم الشخصية تقريبًا. بعد الضغط تظهر الشخصية في المعاينة أعلى الصفحة بمكانها الجديد.</div>
+  </details>
+</div>
+
+<div class="box">
+  <h3>2) لوحات الشخصية</h3>
+  <div class="row" id="sheets"></div>
+  <div class="row"><span>عند رفع عدة صور للوحة</span><select id="sMode"><option value="auto">تلقائي: عدة صور = صور منفصلة، وصورة واحدة = لوحة كاملة</option><option value="grid">اعتبرها لوحة كاملة بشبكة</option><option value="parts">اعتبرها صور منفصلة</option></select><span>وضعيات في كل صورة</span><input type="number" id="nPer" value="2" min="1" max="8" style="width:56px"></div>
+  <div class="row"><label><input type="checkbox" id="cSame"> الصور المرفوعة نسخ مختلفة من نفس الوضعيات (ادمجها في صورة أنظف)</label><span>طريقة الدمج</span><select id="sMerge"><option value="smart">ذكي: وسيط حيث تتطابق + الأنظف حيث تختلف</option><option value="median">وسيط فقط</option><option value="best">الأنظف فقط</option></select><span>حساسية التطابق</span><input type="range" id="rMergeT" min="8" max="80" step="2" value="28"></div>
+  <details id="dParts"><summary>ترتيب صور اللوحات المنفصلة (تقديم/تأخير/حذف، ورقم المجموعة لدمج النسخ)</summary><div id="partsList" style="font-size:14px">لا توجد صور منفصلة بعد</div></details>
+  <details><summary>ضبط شبكة كل لوحة (أعمدة × صفوف)</summary><div id="grids"></div></details>
+  <div class="row"><label><input type="checkbox" id="cHoles" checked> إزالة الفراغات المحصورة (بين الذراع والجسم)</label><span>حجم الشخصية</span><input type="range" id="rSize" min="0.7" max="1.3" step="0.02" value="1"><span>موضع الشخصية</span><input type="range" id="rX" min="0.1" max="0.6" step="0.01" value="0.2"><button id="bRebuild">♻️ إعادة معالجة اللوحات</button></div>
+  <div class="row"><span>تنعيم الحافة</span><input type="range" id="rEdge" min="0" max="3" step="1" value="1"><b id="vEdge">1</b>
+    <span>إزالة الهالة</span><input type="range" id="rHalo" min="0" max="3" step="1" value="1"><b id="vHalo">1</b></div>
+  <div class="row"><label><input type="checkbox" id="cGreen"> معاينة القص على خلفية خضراء (لكشف أي هالة بيضاء)</label></div>
+</div>
+
+<div class="box" id="wcBox">
+  <h3>2-ج) دورة المشي (استوديو)</h3>
+  <div class="row"><label class="f" id="lWc">اختر صور إطارات المشي (3 إلى 12)<input type="file" accept="image/*" multiple id="wcFiles"></label><button id="wcDemo" type="button">مثال تجريبي</button><button id="wcClear" type="button">مسح الكل</button></div>
+  <div style="position:relative;margin-top:8px"><canvas id="wcPrev" width="640" height="360"></canvas><span id="wcTag" style="position:absolute;top:8px;right:8px;background:#111c2dcc;padding:3px 10px;border-radius:99px;font-size:12px">0 / 0</span></div>
+  <div class="row"><button id="wcPlay" type="button">▶ تشغيل</button><button id="wcBack" type="button">◀ السابق</button><button id="wcNext" type="button">التالي ▶</button><span>السرعة <b id="wcFpsT">8</b> إطار/ث</span><input type="range" id="wcFps" min="1" max="24" value="8"></div>
+  <div id="wcGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:6px;margin-top:8px"></div>
+  <div class="row"><button id="wcUse" type="button">✅ استخدمها كدورة المشي في الفيلم</button><span id="wcMsg" style="color:var(--mut)"></span></div>
+  <div style="font-size:12px;color:var(--mut)">نفس الشخصية والزاوية والحجم، والقدمان عند حافة الصورة السفلى. 3–5 إطارات = ذهاب وإياب، 6 فأكثر = دورة مشي كاملة. الترتيب حسب اسم الملف، ويمكنك التعديل بـ ▲ ▼.</div>
+</div>
+<div class="box" id="mouthBox">
+  <h3>2-ب) تحريك الفم (متزامن مع الصوت)</h3>
+  <div class="row"><label><input type="checkbox" id="cMouth" checked> تفعيل حركة الفم</label><label><input type="checkbox" id="cAutoMouth" checked> اكتشاف مكان الفم تلقائيًا بعد رفع اللوحة (Gemini)</label></div>
+  <div class="row"><span>حجم الفم</span><input type="range" id="rMouth" min="0.5" max="1.6" step="0.05" value="0.85"></div>
+  <div class="row" style="font-size:13px;color:#9cf" id="mInfo"></div>
+  <details><summary>ضبط مكان الفم لكل وضعية (اضغط على الفم في الصورة)</summary>
+   <div id="mWrap">
+    <div class="row"><button id="mFS" type="button">⛶ ملء الشاشة</button><span class="fsOnly">تكبير</span><input class="fsOnly" type="range" id="mZoom" min="1" max="8" step="0.25" value="3" style="flex:1;min-width:100px"><b class="fsOnly" id="mZv">3×</b></div>
+    <div class="row"><select id="mSheet"></select><span>الإطار</span><input type="range" id="mFrame" min="1" max="1" value="1" style="flex:1;min-width:100px"><b id="mNum">1</b></div>
+    <div class="row" id="mcRow"><canvas id="mc" width="200" height="340"></canvas></div>
+    <div class="row"><span>عرض الفم</span><input type="range" id="mW" min="10" max="120" value="40" style="flex:1;min-width:100px"><label><input type="checkbox" id="mOn" checked> الفم ظاهر</label></div>
+    <div class="row"><span>زاوية الفم</span><input type="range" id="mR" min="-60" max="60" step="1" value="0" style="flex:1;min-width:100px"><b id="mRv">0°</b><button id="mR0" type="button" style="font-size:13px;padding:4px 10px">0°</button></div>
+    <div class="row"><button id="mAll">تعميم على كل إطارات اللوحة</button><button id="mAuto">🎯 اكتشاف تلقائي</button><button id="mReset" style="background:#5a3a3a">إعادة الضبط</button></div>
+   </div>
+  </details>
+</div>
+
+<div class="box">
+  <h3>3) البطاقات الإيضاحية (خرائط وحيوانات)</h3>
+  <div class="row" id="props"></div>
+  <details id="dPulse" style="display:none"><summary>نقاط النبض على الخرائط (اضغط على الخريطة لتحديد الموضع)</summary>
+    <div class="row"><select id="pSel"></select><label><input type="checkbox" id="cPulse" checked> إظهار النبض</label><button id="pReset" type="button" style="background:#5a3a3a;font-size:13px;padding:4px 10px">إعادة الافتراضي</button></div>
+    <div class="row"><canvas id="pc" width="420" height="120" style="width:auto;max-width:100%;cursor:crosshair;touch-action:none"></canvas></div>
+  </details>
+</div>
+
+<div class="box">
+  <h3>4) التشغيل</h3>
+  <div class="row"><button id="bPlay">تشغيل</button><span>ابدأ من</span><select id="sStart"></select></div>
+  <details id="dIdx"><summary>فهرس المشاهد (اضغط على مشهد للانتقال إليه)</summary><div id="idxList"></div></details>
+  <div class="row">
+    <label><input type="checkbox" id="cTts" checked> تعليق صوتي آلي</label>
+    <label><input type="checkbox" id="cEmb" checked> استخدم ملفات الصوت المرفوعة</label><label class="f" style="flex:0 1 auto">🎙️ رفع ملفات الصوت (بترتيب المشاهد)<input type="file" accept="audio/*" multiple id="fAud"></label><b id="aStat" style="font-size:13px;color:#f9a">0 / 0 مشهد</b>
+    <label><input type="checkbox" id="cAmb" checked> صوت الخلفية (طبيعة + موسيقى هادئة)</label> <input type="range" id="rAmb" min="0" max="1" step="0.05" value="0.35" title="مستوى صوت الخلفية">
+    <label><input type="checkbox" id="cFx" checked> حركة الخلفية (غبار وأوراق وطيور)</label>
+    <label><input type="checkbox" id="cMood" checked> مزاج المشهد (إضاءة وموسيقى)</label>
+    <label><input type="checkbox" id="cSync" checked> مزامنة دقيقة للفم والإيماءات (تحليل مسبق للصوت)</label>
+    <label><input type="checkbox" id="cPar" checked> منظور الخلفية (طبقات بعمق متفاوت مع حركة الكاميرا)</label>
+    <label><input type="checkbox" id="cRim" checked> حافة ضوء على الشخصية وظل ملتصق بلون الأرض</label>
+    <label><input type="checkbox" id="cMulti" checked> طبقة أمامية (أغصان وأوراق تمرّ أمام الكاميرا)</label>
+    <label><input type="checkbox" id="cCel" checked> مظهر السيل (خط حبر رفيع حول الشخصية + ألوان أنقى)</label>
+    <label><input type="checkbox" id="cIris" checked> انتقال بدائرة الآيريس في أول الفيلم وآخره</label>
+    <label><input type="checkbox" id="cTwos"> حركة «على اثنين» (تغيير الوضعية 12 مرة في الثانية)</label>
+    <label><input type="checkbox" id="cOld" checked> فيلم قديم (وميض وخدوش وغبار خفيف)</label>
+    <label><input type="checkbox" id="cSym" checked> رموز كرتونية (علامة تعجب/استفهام فوق الرأس + غبار وخطوط سرعة مع المشي)</label>
+    <label><input type="checkbox" id="cLife" checked> حركة حيّة (تمهيد قبل الحركة + تجاوز واستقرار + إمساك متحرك)</label>
+    <label><input type="checkbox" id="cCam" checked> كاميرا سينمائية (تقريب وانزلاق ولقطة قريبة)</label>
+    <label><input type="checkbox" id="cDof" checked> عمق ميداني (إضابة الخلفية البعيدة)</label> <input type="range" id="rDof" min="0.5" max="3" step="0.25" value="1" title="قوة الإضابة (الخلفيات التي فيها نصوص مكتوبة تحتاج قيمة صغيرة)">
+    <label><input type="checkbox" id="cGrade" checked> تصحيح ألوان موحّد وحبيبات فيلم</label>
+    <label><input type="checkbox" id="cSfx" checked> مؤثرات (خطوات ونقرات)</label>
+    <label><input type="checkbox" id="cRec"> سجّل فيديو أثناء التشغيل</label>
+    <button id="bResetSet" type="button" style="background:#5a3a3a;font-size:13px;padding:4px 10px">↺ إعادة الإعدادات</button>
+    <label><input type="checkbox" id="cChip" checked> إظهار شارة عنوان المشهد (أعلى اليسار)</label>
+    <select id="sQ" title="جودة/حجم الفيديو"><option value="900000">حجم صغير جدًا</option><option value="1600000">متوازن</option><option value="4000000">جودة عالية</option><option value="8000000">جودة فائقة (8 ميجابت)</option></select> <button id="bVid">🎬 تحميل الفيديو</button> <select id="sFps" title="عدد الإطارات في الثانية للتصدير الدقيق"><option value="30">30 إطارًا/ث</option><option value="60">60 إطارًا/ث</option></select> <button id="bExp" title="يرسم كل إطار بدقة ثم يضغطه: لا تقطيع حتى لو كان الجهاز بطيئًا (يستغرق وقتًا أطول)">🎞️ تصدير دقيق بدون تقطيع</button> <a id="dl" style="color:#9cf" download="movie.mp4"></a>
+  </div>
+  <div class="row"><span>الصوت</span><select id="sVoice"></select><span>السرعة</span><input type="range" id="rRate" min="0.6" max="1.3" step="0.05" value="0.92"></div>
+  <div class="row"><span>مفتاح Gemini</span><input type="password" id="kKey" placeholder="AIza... (اتركه فارغًا لاستخدام صوت الجهاز)" style="flex:1;min-width:160px;background:#26313b;color:#eee;border:0;border-radius:6px;padding:8px"></div>
+  <div class="row"><select id="sGm"><option>gemini-2.5-flash-preview-tts</option><option>gemini-2.5-pro-preview-tts</option></select>
+    <select id="sGv"><option>Kore</option><option>Puck</option><option>Charon</option><option>Fenrir</option><option>Aoede</option><option>Zephyr</option><option>Orus</option><option>Leda</option></select>
+    <button id="bWav">🔊 تحميل ملف الصوت</button><a id="dlA" style="color:#9cf" download="narration.wav"></a></div>
+</div>
+<div class="box">
+  <h3>الطاقم: شخصيات الدرس</h3>
+  <div class="row" style="font-size:13px;color:#9cf">كل شخصية نسخة بملابس وغطاء رأس مختلفين من الشخصية الأساسية. في المحرر اختر المتحدث والحاضرين لكل مشهد، أو اكتب الحوار بصيغة «الاسم: نص» واضغط «تحويل الحوار».</div>
+  <div id="castList"></div>
+  <div class="row"><button id="castAdd" type="button">➕ شخصية</button><button id="castPreset" type="button">🕌 طاقم «فتح مصر»</button></div>
+</div>
+<div class="box">
+  <h3>5) محرر المشاهد (اصنع فيلمك الخاص)</h3>
+  <div class="row"><button id="eAdd" type="button">➕ مشهد جديد</button><button id="eDlg" type="button" style="background:#6a3fa0">🎭 تحويل الحوار إلى مشاهد</button><button id="eSave" type="button" style="background:#245a36">✔ حفظ وتطبيق</button><button id="eClear" type="button" style="background:#5a3a3a;font-size:13px;padding:6px 10px">🗑️ مشروع فارغ</button><button id="eDef" type="button" style="background:#5a3a3a;font-size:13px;padding:6px 10px">↺ الدرس الأصلي</button></div>
+  <div id="eList"></div>
+  <div class="row" style="font-size:13px;color:#9cf">عدّل ثم اضغط «حفظ وتطبيق»: تُعاد الصفحة، فأعد رفع الخلفيات وملفات الصوت. عدد ملفات الصوت يساوي عدد المشاهد بنفس الترتيب.</div>
+</div>
+<div class="box">
+  <h3>6) المشروع (حفظ وفتح)</h3>
+  <div class="row"><button id="bPrjSave" type="button">💾 حفظ المشروع</button><label class="f" style="flex:0 1 auto">📂 فتح مشروع<input type="file" accept=".json,application/json" id="fPrj"></label></div>
+  <div class="row" style="font-size:13px;color:#9cf">يحفظ في ملف واحد: المشاهد ونصوصها، كل الإعدادات، مواضع الشخصية لكل خلفية، نقاط النبض، مواضع الفم، وآخر مشهد. مفتاح Gemini لا يُحفظ في الملف.</div>
+</div>
+</section></main>
+<div id="msg"></div>
+
+<script src="js/storage.js"></script>
+<script>
+const FILES=["js/core.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/export.js", "js/settings.js", "assets/shimg.js", "js/backgrounds.js", "js/cast.js", "js/topplay.js", "js/project.js", "js/editor.js", "js/tabs.js"];
+Store.init().then(()=>{FILES.forEach(f=>{const s=document.createElement('script');s.src=f;s.async=false;s.onerror=()=>{document.getElementById('msg').textContent='تعذّر تحميل '+f};document.body.appendChild(s);});});
+</script>
+</body></html>
