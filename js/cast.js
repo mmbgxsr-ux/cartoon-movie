@@ -2,11 +2,14 @@
 const CAST_K = 'cartoonCast1';
 const CAST_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Zephyr', 'Orus', 'Leda'];
 const CAST_ACC = [['', 'بدون غطاء'], ['turban', 'عمامة'], ['shemagh', 'غترة وعقال'], ['cap', 'طاقية'], ['helmet', 'خوذة'], ['crown', 'تاج']];
+const CAST_LAYERS = [['', 'بدون طبقة'], ['cloak', 'عباءة / برنس'], ['armor', 'درع صدر'], ['sash', 'وشاح مائل']];
+const CAST_POS = { l: .16, c: .42, r: .68 };
+const CAST_POS_OPTS = [['', 'تلقائي'], ['l', 'يسار'], ['c', 'وسط'], ['r', 'يمين']];
 const CAST_GUIDE = { id: 'guide', name: 'المرشد', top: '', bottom: '', acc: '', accColor: '#f3ead2', scale: 1, voice: '' };
 const CAST_PRESET = [
   CAST_GUIDE,
-  { id: 'amr', name: 'عمرو بن العاص', top: '#6b4a2b', bottom: '#3b2f22', acc: 'turban', accColor: '#f3ead2', scale: 1, voice: 'Fenrir' },
-  { id: 'omar', name: 'عمر بن الخطاب', top: '#e9e2d0', bottom: '#d8cfb8', acc: 'turban', accColor: '#ffffff', scale: 1.03, voice: 'Charon' },
+  { id: 'amr', name: 'عمرو بن العاص', top: '#6b4a2b', bottom: '#3b2f22', acc: 'turban', accColor: '#f3ead2', scale: 1, voice: 'Fenrir', alt: [{ name: 'زي المعركة', top: '#4a3a2a', bottom: '#3b2f22', acc: 'helmet', accColor: '#9aa3ad', layer: 'armor', layerColor: '#9aa3ad' }, { name: 'بالعباءة', top: '#6b4a2b', bottom: '#3b2f22', acc: 'turban', accColor: '#f3ead2', layer: 'cloak', layerColor: '#7a5a2a' }] },
+  { id: 'omar', name: 'عمر بن الخطاب', top: '#e9e2d0', bottom: '#d8cfb8', acc: 'turban', accColor: '#ffffff', scale: 1.03, voice: 'Charon', alt: [{ name: 'بالعباءة', top: '#e9e2d0', bottom: '#d8cfb8', acc: 'turban', accColor: '#ffffff', layer: 'cloak', layerColor: '#6b5a3a' }] },
   { id: 'muq', name: 'المقوقس', top: '#6d1f33', bottom: '#2f2540', acc: 'cap', accColor: '#7a1f3a', scale: .98, voice: 'Orus' },
   { id: 'sol', name: 'الجندي', top: '#4d5560', bottom: '#3a3f47', acc: 'helmet', accColor: '#9aa3ad', scale: 1, voice: 'Puck' }
 ];
@@ -16,6 +19,13 @@ const castSave = () => { try { Store.setItem(CAST_K, JSON.stringify(CAST)); } ca
 const castById = id => CAST.find(c => c.id === id) || CAST[0];
 const castByName = n => { n = (n || '').trim(); if (!n) return null; return CAST.find(c => c.name === n) || CAST.find(c => c.name.includes(n) || n.includes(c.name)) || null; };
 const voiceOf = s => castById(s.spk || 'guide').voice || '';
+// المتحدث الحالي في مشهد حوار: من أوقات الأسطر (lineT) أو بالتناسب مع طول النص إن لم يتوفر
+function speakerAt(s, tt) {
+  if (!s.lines || !s.lines.length) return s.spk || null;
+  let ta = tt - s.inT; try { if (typeof envOf === 'function' && envOf(s)) ta = audioPos(s); } catch (_) {}
+  let T = s.lineT; if (!T || T.length !== s.lines.length) { const tot = s.lines.reduce((q, L) => q + L.t.length, 0) || 1, D = Math.max(1, s.main || 1); let a = 0; T = s.lines.map(L => { const o = { id: L.spk, a, b: a + L.t.length / tot * D }; a = o.b; return o; }); }
+  let id = T[T.length - 1].id; for (const x of T) if (ta < x.b + .15) { id = x.id; break; } return id;
+}
 const castList = s => { const a = (s.cast || []).filter(id => CAST.some(c => c.id === id)); if (s.spk && CAST.some(c => c.id === s.spk) && !a.includes(s.spk)) a.push(s.spk); return a.length ? a : ['guide']; };
 
 // ----- تلوين الملابس (الأسود فقط، أسفل الذقن) وإضافة غطاء الرأس على نسخة من كل إطار -----
@@ -49,6 +59,30 @@ function castAcc(g, f, c) {
   }
   g.restore();
 }
+// طبقات الملابس: تُرسم بنسب من طول الجسم (h) فتناسب كل الإيماءات
+function castLayer(g, f, c) {
+  const h = f.bb.y1 - f._ht, cx = f._hx, y0 = f._ht, col = c.layerColor || '#8a6a3a', lw = Math.max(1, h * .003);
+  const shade = (hexc, k) => { const r = hex3(hexc) || [138, 106, 58]; return 'rgb(' + r.map(v => Math.max(0, Math.min(255, Math.round(v * k)))).join(',') + ')'; };
+  const vg = (ya, yb, a, b) => { const q = g.createLinearGradient(0, ya, 0, yb); q.addColorStop(0, shade(col, a)); q.addColorStop(1, shade(col, b)); return q; };
+  g.save(); g.translate(cx, y0); g.lineJoin = 'round'; g.lineCap = 'round'; g.strokeStyle = 'rgba(25,18,10,.75)'; g.lineWidth = lw;
+  if (c.layer === 'cloak') {            // عباءة: كتفان واسعان ينسدلان خلف الجسم حتى الركبة
+    g.fillStyle = vg(h * .17, h * .78, 1.08, .72);
+    g.beginPath(); g.moveTo(-h * .075, h * .165); g.quadraticCurveTo(0, h * .145, h * .075, h * .165);
+    g.lineTo(h * .13, h * .24); g.quadraticCurveTo(h * .165, h * .5, h * .15, h * .78); g.lineTo(h * .1, h * .8);
+    g.quadraticCurveTo(h * .105, h * .5, h * .07, h * .26); g.lineTo(-h * .07, h * .26);
+    g.quadraticCurveTo(-h * .105, h * .5, -h * .1, h * .8); g.lineTo(-h * .15, h * .78); g.quadraticCurveTo(-h * .165, h * .5, -h * .13, h * .24); g.closePath(); g.fill(); g.stroke();
+    g.strokeStyle = shade(col, 1.3); g.lineWidth = Math.max(2, h * .006); g.beginPath(); g.moveTo(-h * .075, h * .168); g.quadraticCurveTo(0, h * .148, h * .075, h * .168); g.stroke();
+  } else if (c.layer === 'armor') {     // درع صدر مع حزام
+    g.fillStyle = vg(h * .2, h * .46, 1.2, .6);
+    g.beginPath(); g.moveTo(-h * .062, h * .195); g.lineTo(h * .062, h * .195); g.lineTo(h * .072, h * .33); g.lineTo(h * .055, h * .45); g.lineTo(-h * .055, h * .45); g.lineTo(-h * .072, h * .33); g.closePath(); g.fill(); g.stroke();
+    g.strokeStyle = 'rgba(25,18,10,.5)'; for (let i = 1; i < 4; i++) { const yy = h * (.195 + i * .06); g.beginPath(); g.moveTo(-h * .066, yy); g.lineTo(h * .066, yy); g.stroke(); }
+    g.fillStyle = shade(col, .5); g.fillRect(-h * .06, h * .45, h * .12, h * .018);
+  } else if (c.layer === 'sash') {      // وشاح مائل من الكتف إلى الخصر
+    g.fillStyle = vg(h * .18, h * .5, 1.1, .8);
+    g.beginPath(); g.moveTo(-h * .06, h * .185); g.lineTo(-h * .03, h * .175); g.lineTo(h * .07, h * .46); g.lineTo(h * .035, h * .48); g.closePath(); g.fill(); g.stroke();
+  }
+  g.restore();
+}
 function castFrame(f, c) {
   const k = document.createElement('canvas'); k.width = f.width; k.height = f.height;
   const g = k.getContext('2d', { willReadFrequently: true }); g.drawImage(f, 0, 0);
@@ -67,12 +101,15 @@ function castFrame(f, c) {
     }
     g.putImageData(id, 0, y0);
   }
+  if (c.layer) castLayer(g, f, c);
   if (c.acc) castAcc(g, f, c);
   return k;
 }
 const CVAR = new Map();
-const castSig = c => [c.top, c.bottom, c.acc, c.accColor].join('|');
-const castPlain = c => !c.top && !c.bottom && !c.acc;
+const castSig = c => [c.top, c.bottom, c.acc, c.accColor, c.layer, c.layerColor].join('|');
+const castPlain = c => !c.top && !c.bottom && !c.acc && !c.layer;
+// الزي الذي يلبسه الشخص في هذا المشهد: الأساسي أو أحد الأزياء البديلة (c.alt) حسب s.wear
+const wearOf = (s, id) => { const c = castById(id), k = s && s.wear && s.wear[id]; const a = k != null && c.alt && c.alt[k]; return a ? Object.assign({}, c, a, { id: c.id, name: c.name, voice: c.voice, scale: c.scale }) : c; };
 function castArr(c, name, src) {
   if (castPlain(c) || !src || !src.length || !src[0].bb) return src;
   const sig = castSig(c); let m = CVAR.get(sig); if (!m) { m = {}; CVAR.set(sig, m); if (CVAR.size > 12) CVAR.delete(CVAR.keys().next().value); }
@@ -90,10 +127,11 @@ drawChar = function (s, tt) {
   const list = castList(s); if (list.length < 2 && list[0] === 'guide') return _drawChar0(s, tt);
   CUR_BG = s.map || s.bg || 1; CUR_AMB = ambOf(CUR_BG); GROUND = GRG[CUR_BG] || 625; GSC = GRS[CUR_BG] || 1; ARR = tt;
   const n = list.length, xs = n === 1 ? [W * ((+($('rX') ? $('rX').value : 0) || 0.2))] : n === 2 ? [W * .24, W * .62] : n === 3 ? [W * .16, W * .42, W * .68] : [W * .12, W * .32, W * .52, W * .72];
-  const spk = s.spk && list.includes(s.spk) ? s.spk : list[0], sx = xs[list.indexOf(spk)];
+  list.forEach((id, i) => { const p = s.pos && CAST_POS[s.pos[id]]; if (p != null) xs[i] = W * p; });
+  const _sp = speakerAt(s, tt) || s.spk, spk = _sp && list.includes(_sp) ? _sp : list[0], sx = xs[list.indexOf(spk)];
   const m = Math.min(.999, Math.max(0, mOf(s, tt)));
   list.forEach((id, i) => {
-    if (id === spk) return; const c = castById(id);
+    if (id === spk) return; const c = wearOf(s, id);
     withCast(c, () => {
       const fr = frames.talk; if (!fr) return; const sv = { open: M.open, wide: M.wide, round: M.round, act: M.act }; M.open = M.wide = M.round = M.act = 0;
       const br = Math.sin(clock * 2.1 + i * 1.7);
@@ -101,7 +139,7 @@ drawChar = function (s, tt) {
       Object.assign(M, sv);
     });
   });
-  const c = castById(spk);
+  const c = wearOf(s, spk);
   withCast(c, () => { const os = UI.size; UI.size = () => os() * (c.scale || 1); try { drawStand(s, m, sx, 1); } finally { UI.size = os; } });
 };
 
@@ -118,6 +156,17 @@ drawChar = function (s, tt) {
     g.drawImage(f, b.x0, b.y0, sw, sh, (cv.width - sw * k) / 2, cv.height - sh * k, sw * k, sh * k);
   }
   function save() { castSave(); previews.forEach(p => paint(p.cv, p.c)); }
+  const colO = (o, lab, key) => el('label', { style: 'display:inline-flex;align-items:center;gap:4px;font-size:13px' }, [document.createTextNode(lab), el('input', { type: 'color', value: o[key] || '#444444', style: 'width:34px;height:26px;padding:0;border:0;background:none', onchange() { o[key] = this.value; save(); } }), el('button', { type: 'button', textContent: '↺', title: 'الأصلي', style: 'padding:2px 7px;background:#3a4656;font-size:12px', onclick() { o[key] = ''; render(); castSave(); } })]);
+  const layerRow = o => { const s1 = el('select'); CAST_LAYERS.forEach(([v, t]) => s1.appendChild(el('option', { value: v, textContent: t }))); s1.value = o.layer || ''; s1.onchange = () => { o.layer = s1.value; save(); };
+    return el('div', { className: 'row', style: 'margin:0' }, [el('span', { textContent: 'ملابس إضافية' }), s1, el('input', { type: 'color', value: o.layerColor || '#8a6a3a', style: 'width:34px;height:26px;padding:0;border:0;background:none', onchange() { o.layerColor = this.value; save(); } })]); };
+  const altBox = (c, a, j) => {
+    const acc2 = el('select'); CAST_ACC.forEach(([v, t]) => acc2.appendChild(el('option', { value: v, textContent: t }))); acc2.value = a.acc || ''; acc2.onchange = () => { a.acc = acc2.value; save(); };
+    return el('div', { style: 'border:1px solid #2f3d50;border-radius:8px;padding:6px;margin-top:4px;display:flex;flex-direction:column;gap:6px' }, [
+      el('div', { className: 'row', style: 'margin:0' }, [el('input', { value: a.name || '', placeholder: 'اسم الزي', style: inp + ';flex:1;min-width:100px', oninput() { a.name = this.value; castSave(); } }), el('button', { type: 'button', textContent: '✕', style: 'padding:4px 10px;background:#5a3a3a', onclick() { c.alt.splice(j, 1); castSave(); render(); } })]),
+      el('div', { className: 'row', style: 'margin:0' }, [colO(a, 'القميص', 'top'), colO(a, 'البنطال', 'bottom')]),
+      el('div', { className: 'row', style: 'margin:0' }, [acc2, el('input', { type: 'color', value: a.accColor || '#f3ead2', style: 'width:34px;height:26px;padding:0;border:0;background:none', onchange() { a.accColor = this.value; save(); } })]),
+      layerRow(a)]);
+  };
   function render() {
     box.innerHTML = ''; previews.length = 0;
     CAST.forEach((c, i) => {
@@ -133,7 +182,11 @@ drawChar = function (s, tt) {
         el('div', { className: 'row', style: 'margin:0' }, [nm, del]),
         el('div', { className: 'row', style: 'margin:0' }, [colr('القميص', 'top'), colr('البنطال', 'bottom')]),
         el('div', { className: 'row', style: 'margin:0' }, [acc, accC, el('span', { textContent: 'الحجم' }), sc]),
-        el('div', { className: 'row', style: 'margin:0' }, [vo])])]));
+        layerRow(c),
+        el('div', { className: 'row', style: 'margin:0' }, [vo]),
+        el('div', { style: 'font-size:12px;color:#8ea0b5' }, [document.createTextNode('الأزياء البديلة (تُختار لكل مشهد من المحرر)')]),
+        ...(c.alt || []).map((a, j) => altBox(c, a, j)),
+        el('button', { type: 'button', textContent: '➕ زي بديل', style: 'align-self:flex-start;padding:4px 10px;background:#3a4656', onclick() { (c.alt = c.alt || []).push({ name: 'زي ' + (c.alt.length + 1), top: c.top || '', bottom: c.bottom || '', acc: c.acc || '', accColor: c.accColor || '#f3ead2', layer: '', layerColor: '#8a6a3a' }); castSave(); render(); } })])]));
     });
     previews.forEach(p => paint(p.cv, p.c));
   }

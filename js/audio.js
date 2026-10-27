@@ -28,10 +28,24 @@ async function gen(s) {
   }
   throw new Error('فشل توليد الصوت');
 }
+// مشهد حوار: يُولَّد صوت كل سطر بصوت صاحبه ثم تُدمج في مقطع واحد، ويُسجَّل وقت كل سطر (lineT) ليعرف الرسم من يتكلم
+async function genLines(s) {
+  const GAP = .3, R = 24000, parts = [], T = []; let t = 0;
+  for (let k = 0; k < s.lines.length; k++) {
+    const L = s.lines[k], tmp = { spk: L.spk === 'guide' ? undefined : L.spk, text: L.t };
+    if (k) await sleep(800);
+    await gen(tmp);
+    if (k) { parts.push(new Int16Array(Math.round(GAP * R))); t += GAP; }
+    parts.push(tmp.pcm); T.push({ id: L.spk || 'guide', a: t, b: t + tmp.adur }); t += tmp.adur;
+  }
+  const n = parts.reduce((q, p) => q + p.length, 0), pcm = new Int16Array(n); let o = 0; parts.forEach(p => { pcm.set(p, o); o += p.length; });
+  const buf = ac().createBuffer(1, n, R), ch = buf.getChannelData(0); for (let i = 0; i < n; i++) ch[i] = pcm[i] / 32768;
+  s.pcm = pcm; s.abuf = buf; s.adur = buf.duration; s.lineT = T;
+}
 async function genAll() {
-  if (EMBON() || !gemKey() || !$('cTts').checked) return true; ac(); const vk = s => ((typeof voiceOf === 'function' && voiceOf(s)) || $('sGv').value) + $('sGm').value;
+  if (EMBON() || !gemKey() || !$('cTts').checked) return true; ac(); const vo1 = s => (typeof voiceOf === 'function' && voiceOf(s)) || $('sGv').value, vk = s => (s.lines && s.lines.length ? s.lines.map(L => vo1({ spk: L.spk }) + '|' + L.t).join('¦') : vo1(s)) + $('sGm').value;
   try {
-    for (let i = 0; i < SHOTS.length; i++) { const s = SHOTS[i]; const v = vk(s); if (s.abuf && s.gk === v) continue; msg('جاري توليد الصوت ' + (i + 1) + ' من ' + SHOTS.length + ' …'); await gen(s); s.gk = v; await sleep(800); }
+    for (let i = 0; i < SHOTS.length; i++) { const s = SHOTS[i]; const v = vk(s); if (s.abuf && s.gk === v) continue; msg('جاري توليد الصوت ' + (i + 1) + ' من ' + SHOTS.length + ' …'); await (s.lines && s.lines.length ? genLines(s) : gen(s)); s.gk = v; await sleep(800); }
     msg(''); recalc(); return true;
   } catch (e) { msg('خطأ Gemini: ' + e.message); return false; }
 }
