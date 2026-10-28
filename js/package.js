@@ -34,15 +34,19 @@
     if (e < 0) throw new Error('ملف ZIP غير صالح');
     const n = tail.getUint16(e + 10, true), cdSize = tail.getUint32(e + 12, true), cdOff = tail.getUint32(e + 16, true);
     if (n > MAXN) throw new Error('عدد الملفات داخل الحزمة كبير جدًا'); if (cdOff === 0xFFFFFFFF || cdOff + cdSize > size) throw new Error('ملف ZIP غير مدعوم');
-    const cd = new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer()), ents = {}; let p = 0;
+    const mem = size <= 256 * 1048576 ? await file.arrayBuffer() : null;   // ملف أقل من 256 ميجابايت: نقرؤه مرة واحدة (أسرع بكثير من slice لكل مدخل)
+    const cd = mem ? new DataView(mem, cdOff, cdSize) : new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer()), ents = {}; let p = 0;
     for (let i = 0; i < n; i++) {
       if (p + 46 > cd.byteLength || cd.getUint32(p, true) !== 0x02014b50) throw new Error('ملف ZIP تالف');
       const method = cd.getUint16(p + 10, true), csize = cd.getUint32(p + 20, true), nl = cd.getUint16(p + 28, true), el = cd.getUint16(p + 30, true), cl = cd.getUint16(p + 32, true), lho = cd.getUint32(p + 42, true);
-      ents[dec.decode(new Uint8Array(cd.buffer, p + 46, nl))] = { method, csize, lho }; p += 46 + nl + el + cl;
+      ents[dec.decode(new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nl))] = { method, csize, lho }; p += 46 + nl + el + cl;
     }
     const get = async path => {
       const m = ents[path]; if (!m) return null;
-      const lh = new DataView(await file.slice(m.lho, m.lho + 30).arrayBuffer()), s = m.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true), b = file.slice(s, s + m.csize);
+      if (m.lho + 30 > size) throw new Error('ملف ZIP تالف');
+      const lh = mem ? new DataView(mem, m.lho, 30) : new DataView(await file.slice(m.lho, m.lho + 30).arrayBuffer()), s = m.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+      if (s + m.csize > size) throw new Error('ملف ZIP تالف');
+      const b = mem ? new Blob([new Uint8Array(mem, s, m.csize)]) : file.slice(s, s + m.csize);
       if (m.method === 0) return b;
       if (m.method === 8 && window.DecompressionStream) return new Response(b.stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob();
       throw new Error('طريقة ضغط غير مدعومة في ' + path);

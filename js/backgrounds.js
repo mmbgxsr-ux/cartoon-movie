@@ -1,4 +1,8 @@
-Object.keys(SH).forEach((n, ix) => { if (!SHIMG[n]) return; const im = new Image(); im.onload = async () => { await FCACHE.load(n); imgs[n] = im; build(n); FCACHE.save(n); refreshMouthUI(); const l = $('sheets').children[ix]; if (l) l.classList.add('ok'); }; im.src = SHIMG[n]; });
+{ const names = Object.keys(SH).filter(n => SHIMG[n]); let done = 0; const PFX = 'جاري تجهيز الشخصية';   // رسالة تقدّم أثناء التجهيز بدل صفحة تبدو متجمدة
+  Object.keys(SH).forEach((n, ix) => { if (!SHIMG[n]) return; const im = new Image(); im.onload = async () => { await FCACHE.load(n); imgs[n] = im; build(n); FCACHE.save(n); refreshMouthUI(); const l = $('sheets').children[ix]; if (l) l.classList.add('ok');
+    done++; const cur = $('msg').textContent;
+    if (done < names.length) { if (!cur || cur.startsWith(PFX) || cur.startsWith('ارفع الخلفيات')) msg(PFX + ' (' + done + ' / ' + names.length + ') …'); } else if (cur.startsWith(PFX)) msg('ارفع الخلفيات وملفات الصوت ثم اضغط تشغيل'); };
+    im.src = SHIMG[n]; }); }
 // الخلفيات الخمس عشرة مدمجة (بترتيب أرقامها) وتُحمَّل تلقائيًا
 
 const BG_DESC = Object.fromEntries(Array.from({ length: 15 }, (_, i) => [i + 1, 'خلفية ' + (i + 1)]));
