@@ -22,7 +22,12 @@ let FACE_BASE = (() => { try { return Store.getItem(FACE_K) === 'l' ? -1 : 1; } 
 const faceDir = c => (c.face === 'l' ? -1 : c.face === 'r' ? 1 : FACE_BASE);
 const castSave = () => { try { Store.setItem(CAST_K, JSON.stringify(CAST)); } catch (_) {} };
 const castById = id => CAST.find(c => c.id === id) || CAST[0];
-const castByName = n => { n = (n || '').trim(); if (!n) return null; return CAST.find(c => c.name === n) || CAST.find(c => c.name.includes(n) || n.includes(c.name)) || null; };
+// مطابقة الاسم: تطابق تام، ثم الكلمة الأولى (عمر ≠ عمرو)، ثم أي كلمة كاملة في الاسم، ثم احتواء يُقبل فقط إن كان وحيدًا
+const castByName = n => {
+  n = (n || '').trim(); if (!n) return null; const w = c => c.name.trim().split(/\s+/);
+  const hit = CAST.find(c => c.name === n) || CAST.find(c => w(c)[0] === n) || CAST.find(c => w(c).includes(n));
+  if (hit) return hit; const f = CAST.filter(c => c.name.includes(n) || n.includes(c.name)); return f.length === 1 ? f[0] : null;
+};
 const voiceOf = s => castById(s.spk || 'guide').voice || '';
 // المتحدث الحالي في مشهد حوار: من أوقات الأسطر (lineT) أو بالتناسب مع طول النص إن لم يتوفر
 function speakerAt(s, tt) {
