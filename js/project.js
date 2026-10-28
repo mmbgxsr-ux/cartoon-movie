@@ -1,6 +1,6 @@
 // حفظ وفتح المشروع كملف JSON
 (function () {
-  const KEYS = ['cartoonScenes1', 'cartoonMovieSettings1', 'cartoonGround1', 'cartoonPulse1', 'mouths_v3', 'cartoonLastScene1', 'cartoonCast1'];
+  const KEYS = ['cartoonScenes1', 'cartoonMovieSettings1', 'cartoonGround1', 'cartoonPulse1', 'mouths_v3', 'cartoonLastScene1', 'cartoonCast1', 'cartoonPlan1'];
   const say = t => { const m = document.getElementById('msg'); if (m) m.textContent = t; };
   document.getElementById('bPrjSave').onclick = () => {
     const data = {}; KEYS.forEach(k => { try { const v = Store.getItem(k); if (v != null) data[k] = v; } catch (_) {} });
