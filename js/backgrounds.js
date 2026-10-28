@@ -1,4 +1,4 @@
-Object.keys(SH).forEach((n, ix) => { if (!SHIMG[n]) return; const im = new Image(); im.onload = () => { imgs[n] = im; build(n); refreshMouthUI(); const l = $('sheets').children[ix]; if (l) l.classList.add('ok'); }; im.src = SHIMG[n]; });
+Object.keys(SH).forEach((n, ix) => { if (!SHIMG[n]) return; const im = new Image(); im.onload = async () => { await FCACHE.load(n); imgs[n] = im; build(n); FCACHE.save(n); refreshMouthUI(); const l = $('sheets').children[ix]; if (l) l.classList.add('ok'); }; im.src = SHIMG[n]; });
 // الخلفيات الخمس عشرة مدمجة (بترتيب أرقامها) وتُحمَّل تلقائيًا
 
 const BG_DESC = Object.fromEntries(Array.from({ length: 15 }, (_, i) => [i + 1, 'خلفية ' + (i + 1)]));

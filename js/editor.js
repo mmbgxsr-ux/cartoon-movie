@@ -1,6 +1,6 @@
 (function () {
   const SK = 'cartoonScenes1', ACT = [['talk', 'حديث'], ['wave', 'تلويح'], ['point', 'إشارة'], ['think', 'تفكير'], ['sad', 'حزن'], ['awe', 'دهشة'], ['sit', 'جلوس'], ['joy', 'فرح'], ['pointup', 'إشارة للأعلى'], ['turn', 'التفات']];
-  const pick = s => JSON.parse(JSON.stringify({ h: s.h || '', bg: s.bg || 1, text: s.text || '', acts: s.acts || [[0, 'talk']], props: s.props || [], noWalk: !!s.noWalk, run: !!s.run, out: s.out, extra: s.extra, spk: s.spk, cast: s.cast, lines: s.lines, pos: s.pos, wear: s.wear, noFace: s.noFace, era: s.era, year: s.year, amb: s.amb }));
+  const pick = s => JSON.parse(JSON.stringify({ h: s.h || '', bg: s.bg || 1, text: s.text || '', acts: s.acts || [[0, 'talk']], props: s.props || [], noWalk: !!s.noWalk, run: !!s.run, out: s.out, extra: s.extra, spk: s.spk, cast: s.cast, lines: s.lines, pos: s.pos, wear: s.wear, noFace: s.noFace, era: s.era, year: s.year, amb: s.amb, q: s.q, holo: s.holo }));
   let ED = SHOTS.map(pick);
   const el = (t, p, c) => { const e = document.createElement(t); if (p) Object.assign(e, p); (c || []).forEach(x => e.appendChild(x)); return e; };
   const sel = (opts, val, fn) => { const s = el('select'); opts.forEach(([v, t]) => s.appendChild(el('option', { value: v, textContent: t }))); s.value = val; s.onchange = () => fn(s.value); return s; };
@@ -25,7 +25,7 @@
       const opts = el('div', { className: 'row' }, [sel(bgOpts, s.bg, v => { s.bg = +v; }),
         sel(ACT, (s.acts[0] && s.acts[0][1]) || 'talk', v => { s.acts = v === 'talk' ? [[0, 'talk']] : [[0, v], [0.6, 'talk']]; }),
         sel([['', 'خروج: مشي'], ['away', 'خروج: بالظهر'], ['turnaway', 'خروج: التفات ثم بالظهر']], s.out || '', v => { s.out = v || undefined; }),
-        sel([['walk', 'دخول: مشي'], ['run', 'دخول: جري'], ['none', 'بدون دخول']], s.noWalk ? 'none' : (s.run ? 'run' : 'walk'), v => { s.noWalk = v === 'none'; s.run = v === 'run'; }), propSel, cap]);
+        sel([['walk', 'دخول: مشي'], ['run', 'دخول: جري'], ['none', 'بدون دخول']], s.noWalk ? 'none' : (s.run ? 'run' : 'walk'), v => { s.noWalk = v === 'none'; s.run = v === 'run'; }), propSel, cap, el('label', { style: 'white-space:nowrap' }, [el('input', { type: 'checkbox', checked: !!s.holo, onchange() { s.holo = this.checked || undefined; } }), el('span', { textContent: ' هولجرام' })])]);
       const eraRow = el('div', { className: 'row' }, [el('span', { textContent: 'شريط العصر' }),
         el('input', { value: s.era || '', placeholder: 'العصر', style: 'background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px;width:150px', oninput() { s.era = this.value.trim() || undefined; } }),
         el('input', { value: s.year || '', placeholder: 'السنة', style: 'background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px;width:100px', oninput() { s.year = this.value.trim() || undefined; } }),
@@ -77,7 +77,7 @@
       lines.forEach(L => { const m = re.exec(L), c = m && castByName(m[1]); if (c) { parts.push({ id: c.id, t: m[2].trim() }); prev = parts[parts.length - 1]; found++; } else if (prev) prev.t += ' ' + L; else parts.push({ id: s.spk || 'guide', t: L }); });
       if (!parts.some(p => p.id !== (s.spk || 'guide')) && !found) { out.push(s); return; }
       const ids = [...new Set(parts.map(p => p.id))];
-      parts.forEach((p, k) => { const o = pick(s); o.lines = undefined; o.text = p.t; o.spk = p.id === 'guide' ? undefined : p.id; o.cast = ids.length === 1 && ids[0] === 'guide' ? undefined : ids; o.noWalk = true; o.run = false; o.out = undefined; if (k > 0) { o.props = []; o.h = s.h + ' ' + (k + 1); } o.acts = [[0, 'talk']]; out.push(o); });
+      parts.forEach((p, k) => { const o = pick(s); o.lines = undefined; o.text = p.t; o.spk = p.id === 'guide' ? undefined : p.id; o.cast = ids.length === 1 && ids[0] === 'guide' ? undefined : ids; o.noWalk = true; o.run = false; o.out = undefined; if (k > 0) { o.props = []; o.h = s.h + ' ' + (k + 1); } o.acts = [[0, 'talk']]; o.q = k === parts.length - 1 ? s.q : undefined; out.push(o); });
     });
     if (!found) { document.getElementById('msg').textContent = 'لا يوجد حوار بصيغة «الاسم: نص»، تأكد أن الأسماء مطابقة لأسماء الطاقم'; return; }
     ED = out; render(); document.getElementById('msg').textContent = 'تم تحويل الحوار إلى ' + ED.length + ' مشهدًا، راجع ثم اضغط «حفظ وتطبيق»';

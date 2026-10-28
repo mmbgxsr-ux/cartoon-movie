@@ -165,7 +165,7 @@ def test_project_save_and_open_roundtrip(page, tmp_path):
     reload(page)
     assert page.evaluate("SHOTS.length") == 1
     page.set_input_files("#fPrj", str(f))
-    page.wait_for_function("SHOTS.length === 2", timeout=15000)
+    page.wait_for_function("SHOTS.length === 2", timeout=45000)   # أثناء بدء التشغيل قد ينشغل المتصفح ببناء صفحات الشخصية عدة ثوانٍ
     assert page.evaluate("SHOTS[0].text") == SCENES[0]["text"]
 
 
@@ -379,3 +379,68 @@ def test_corrupt_package_is_rejected(page, tmp_path, content):
     page.set_input_files("#fPrj", str(bad))
     page.wait_for_function("document.getElementById('msg').textContent.includes('تعذّر فتح المشروع')", timeout=10000)
     assert page.evaluate("SHOTS.length") == 2, "فتح حزمة تالفة يجب ألا يمسح بيانات المستخدم"
+
+
+# ---------- لحظات القرار ----------
+def test_decision_moment_pauses_and_resumes(page, tmp_path):
+    q = {"q": "سؤال تجريبي؟", "opts": ["أ", "ب", "ج"], "ans": 1, "why": "لأن ب هو الصحيح"}
+    scenes = [dict(SCENES[0], text="نص قصير", q=q), dict(SCENES[1], text="نص ثانٍ")]
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    assert page.evaluate("SHOTS[0].q.ans") == 1 and page.evaluate("SHOTS[1].q") is None
+    bg = tmp_path / "bg.png"
+    bg.write_bytes(_png(640, 360))
+    page.set_input_files("#fBg", str(bg))
+    page.wait_for_function("bgs.length >= 1", timeout=10000)
+    page.evaluate("begin()")
+    page.wait_for_selector(".qBox", timeout=40000)
+    assert page.evaluate("idx") == 0 and page.evaluate("QWAIT") is True
+    t0 = page.evaluate("t")
+    page.wait_for_timeout(1500)
+    assert abs(page.evaluate("t") - t0) < 0.01, "يجب أن يتجمّد الزمن أثناء السؤال"
+    page.click(".qOpt >> nth=1")
+    assert page.locator(".qOpt.ok").count() == 1 and page.locator(".qWhy").is_visible()
+    page.click(".qGo")
+    assert page.locator(".qBox").count() == 0 and page.evaluate("QWAIT") is False
+    page.wait_for_function("idx === 1", timeout=20000)
+    assert page.errors == []
+
+
+# ---------- تأثير الهولجرام ----------
+def test_hologram_effect_changes_character_pixels(page, tmp_path):
+    scenes = [dict(SCENES[0], text="نص قصير", noWalk=True, holo=True)]
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    assert page.evaluate("SHOTS[0].holo") is True
+    bg = tmp_path / "bg.png"
+    bg.write_bytes(_png(640, 360))
+    page.set_input_files("#fBg", str(bg))
+    page.wait_for_function("bgs.length >= 1", timeout=10000)
+    grab = """() => { idx = 0; t = 2.5; tickSim(0.02); idx = 0; t = 2.5; tickSim(0.02);
+        return Array.from(ctx.getImageData(0, 0, W, H).data); }"""
+    page.evaluate("document.getElementById('cHolo').checked = false")
+    off = page.evaluate(grab)
+    page.evaluate("document.getElementById('cHolo').checked = true")
+    on = page.evaluate(grab)
+    diff = sum(1 for i in range(0, len(on), 4) if abs(on[i] - off[i]) + abs(on[i + 2] - off[i + 2]) > 60)
+    assert diff > 500, "يجب أن يغيّر الهولجرام بكسلات الشخصية (تغيّر %d)" % diff
+    assert page.errors == []
+
+
+# ---------- التخزين المؤقت لإطارات الشخصية ----------
+def test_sheet_frames_cache_is_reused_on_second_open(page):
+    ready = "Object.keys(SH).every(n => !SHIMG[n] || frames[n])"
+    page.wait_for_function(ready, timeout=120000)
+    n = page.evaluate("Object.keys(SH).filter(n => SHIMG[n]).length")
+    count = """async () => { const db = await new Promise((r, j) => { const q = indexedDB.open('cmFrameCache1', 1); q.onsuccess = () => r(q.result); q.onerror = j; });
+        const c = await new Promise(r => { const q = db.transaction('sheets').objectStore('sheets').count(); q.onsuccess = () => r(q.result); }); db.close(); return c; }"""
+    for _ in range(60):   # ننتظر اكتمال الحفظ في الخلفية
+        if page.evaluate(count) >= n:
+            break
+        page.wait_for_timeout(2000)
+    else:
+        raise AssertionError("لم يُحفظ التخزين المؤقت")
+    reload(page)
+    page.wait_for_function(ready, timeout=60000)
+    assert page.evaluate("FCACHE.hits") == n, "كل الصفحات يجب أن تُستعاد من التخزين المؤقت في الفتح الثاني"
+    assert page.errors == []

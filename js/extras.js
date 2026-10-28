@@ -182,7 +182,7 @@ function oldFilm() {   // وميض خفيف وخدوش عمودية وغبار �
 function tickSim(dt) {
   clock += dt;
   const s = SHOTS[idx];
-  if (playing) {
+  if (playing && !QWAIT) {
     const T1 = s.dur - s.outT - (s.extra || 0);
     if (s.speaking && !s.done && t >= T1) { s.hold = (s.hold || 0) + dt; if (s.hold > 20) s.done = true; } else t += dt;
     if (s.speaking && s.done && t < T1) t = T1;
@@ -190,6 +190,7 @@ function tickSim(dt) {
       const ta = s.inT + (AC.currentTime - s._a0); if (Math.abs(ta - t) > .08) t = Math.max(0, ta);
     }
     if (!spoken && t >= s.inT) { spoken = true; speak(s); }
+    if (s.q && !s._qd && !EXPORTING && !rec && t >= T1 && (!s.speaking || s.done)) { s._qd = true; showQ(s); }   // لحظة قرار: يتوقف الفيلم ويظهر السؤال
     if (t >= s.dur) { s.speaking = false; s.done = false; idx++; t = 0; spoken = false; if (idx >= SHOTS.length) { idx = 0; if (EXPORTING) EXP_END = true; else stopAll(); } }
   }
   const sh = SHOTS[idx];
@@ -212,9 +213,18 @@ function tickSim(dt) {
   $('prog').style.width = (el / TOTAL * 100) + '%';
   $('info').textContent = 'المشهد ' + (idx + 1) + ' من ' + SHOTS.length + ' — ' + '\u2066' + fmt(el) + ' / ' + fmt(TOTAL) + '\u2069';
 }
+// عند عدم التشغيل لا حاجة لإعادة الرسم 60 مرة في الثانية: نرسم بسرعة (~20/ث) لثانية ونصف بعد أي لمس أو تغيير، ثم بمعدل بطيء (~2/ث)
+let IDLE_LAST = 0, IDLE_BOOST = 0;
+['input', 'change', 'pointerdown', 'pointerup', 'keydown', 'resize'].forEach(e => addEventListener(e, () => { IDLE_BOOST = performance.now() + 1500; }, true));
 function loop(now) {
+  if (!playing && !EXPORTING && !QWAIT && !PERF.full && now - IDLE_LAST < (now < IDLE_BOOST ? 45 : 450)) { requestAnimationFrame(loop); return; }
+  IDLE_LAST = now;
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  if (!EXPORTING) tickSim(dt);
+  if (!EXPORTING) {
+    const pm = PERF.on && PERF.add ? performance.now() : 0;
+    tickSim(dt);
+    if (pm) PERF.add(performance.now() - pm, dt);
+  }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
