@@ -66,6 +66,23 @@ def _png(w, h):
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
+def _png_cells(w, h, cols, rows):
+    """لوحة شخصيات تجريبية: خلفية بيضاء ومستطيل داكن في كل خانة من الشبكة."""
+    import struct
+    import zlib
+    cw, ch = w // cols, h // rows
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)
+        for x in range(w):
+            cx, cy = x % cw, y % ch
+            dark = cw * .3 < cx < cw * .7 and ch * .15 < cy < ch * .85
+            raw += b"\x20\x30\x40" if dark else b"\xff\xff\xff"
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b"")
+
+
 def _wav(seconds=2.0, rate=24000):
     """ملف WAV قصير (نغمة) لاستخدامه كصوت مرفوع بدل مفتاح Gemini."""
     import io
@@ -271,3 +288,94 @@ def test_export_short_clip(page, tmp_path):
     assert blob_size > 20000, "الفيديو أصغر من المتوقع (%d بايت)" % blob_size
     assert bytes(head) == b"ftyp", "الملف الناتج ليس MP4 صالحًا"
     assert page.evaluate("EXPORTING") is False
+
+
+# ---------- 6) الحزمة الكاملة (.zip) ----------
+def _make_package(page, tmp_path):
+    """يرفع خلفيتين ولوحة وبطاقة وصوتًا ثم يحفظ الحزمة ويعيد (مسارها، الملفات المرفوعة)."""
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(SCENES)))
+    page.evaluate("localStorage.setItem('gk', 'SECRET-KEY-123456789')")
+    reload(page)
+    files = {
+        "bg1.png": _png(640, 360), "bg2.png": _png(320, 180),
+        "sheet.png": _png_cells(400, 200, 2, 1), "card.png": _png_cells(200, 200, 1, 1), "01.wav": _wav(),
+    }
+    for name, data in files.items():
+        (tmp_path / name).write_bytes(data)
+    # شبكة غير افتراضية للوحة الإشارة (عمودان × صف واحد) تُحفظ في الحزمة
+    page.evaluate("""() => { $('gc_point').value = 2; $('gr_point').value = 1; $('gc_point').onchange(); }""")
+    page.set_input_files("#fBg", [str(tmp_path / "bg1.png"), str(tmp_path / "bg2.png")])
+    page.set_input_files('input[data-pick="point"]', str(tmp_path / "sheet.png"))
+    page.set_input_files('input[data-pick="card1"]', str(tmp_path / "card.png"))
+    page.set_input_files("#fAud", str(tmp_path / "01.wav"))
+    page.wait_for_function("bgs.length === 2 && imgs.point && imgs.point._f && props.card1 && SHOTS[0].eb", timeout=20000)
+    open_tab(page, "#bPkgSave")
+    with page.expect_download() as d:
+        page.click("#bPkgSave")
+    out = tmp_path / "package.zip"
+    d.value.save_as(str(out))
+    return out
+
+
+def test_full_package_roundtrip_on_fresh_browser(browser, base_url, page, tmp_path):
+    import zipfile
+    pkg = _make_package(page, tmp_path)
+
+    # محتوى الحزمة سليم، ولا يحتوي مفتاح API
+    with zipfile.ZipFile(pkg) as z:
+        assert z.testzip() is None
+        names = z.namelist()
+        man = json.loads(z.read("manifest.json"))
+        assert len([n for n in names if n.startswith("bg/")]) == 2
+        assert [n for n in names if n.startswith("sheets/")] and [n for n in names if n.startswith("props/")] and [n for n in names if n.startswith("audio/")]
+        assert man["grids"]["point"] == [2, 1]
+        assert all(b"SECRET-KEY" not in z.read(n) for n in names), "مفتاح Gemini تسرّب إلى الحزمة"
+
+    # متصفح جديد تمامًا (تخزين فارغ) = جهاز آخر
+    ctx = browser.new_context(accept_downloads=True)
+    pg = ctx.new_page()
+    errs = []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    pg.goto(base_url + "/index.html")
+    pg.wait_for_function("window.Store && Store.ready && typeof SHOTS !== 'undefined' && window.CMPack && CMPack.ready", timeout=20000)
+    assert pg.evaluate("bgs.length") == 0 and pg.evaluate("SHOTS.length") == 1
+    pg.set_input_files("#fPrj", str(pkg))
+    pg.wait_for_function("window.CMPack && CMPack.ready && bgs.length === 2 && SHOTS.length === 2", timeout=60000)
+    pg.wait_for_function("document.getElementById('msg').textContent.includes('تم استرجاع الحزمة')", timeout=20000)
+
+    assert pg.evaluate("[bgs[0].naturalWidth, bgs[1].naturalWidth]") == [640, 320]
+    assert pg.evaluate("imgs.point._f.name") == "sheet.png"
+    assert pg.evaluate("SH.point.cols") == 2 and pg.evaluate("SH.point.rows.length") == 1
+    assert pg.evaluate("frames.point.length") >= 1
+    assert pg.evaluate("!!props.card1")
+    assert pg.evaluate("!!SHOTS[0].eb") and pg.evaluate("SHOTS[0].eb.duration") > 1
+    assert pg.evaluate("SHOTS[1].text") == SCENES[1]["text"]
+    assert pg.evaluate("localStorage.getItem('gk')") is None
+    assert "تعذّر" not in pg.evaluate("document.getElementById('msg').textContent")
+    assert errs == []
+
+    # الحزمة المستعادة يمكن حفظها من جديد (الملفات الأصلية محفوظة بعد الاستعادة)
+    again = pg.evaluate("CMPack.build().then(r => ({ bg: r.man.assets.bg.length, sheets: Object.keys(r.man.assets.sheets), props: Object.keys(r.man.assets.props), audio: r.man.assets.audio.length }))")
+    assert again == {"bg": 2, "sheets": ["point"], "props": ["card1"], "audio": 1}
+    ctx.close()
+
+
+def test_package_is_applied_only_once(page, tmp_path):
+    pkg = _make_package(page, tmp_path)
+    page.set_input_files("#fPrj", str(pkg))
+    page.wait_for_function("window.CMPack && CMPack.ready && bgs.length === 2", timeout=60000)
+    page.evaluate("bgs.length = 0")          # نفرّغ ثم نعيد التحميل: لا يجب أن تُعاد الخلفيات من حزمة معلّقة قديمة
+    page.reload()
+    page.wait_for_function("window.CMPack && CMPack.ready", timeout=20000)
+    assert page.evaluate("bgs.length") == 0
+
+
+@pytest.mark.parametrize("content", [b"PK\x03\x04 this is not really a zip file", b"PK" + bytes(40)])
+def test_corrupt_package_is_rejected(page, tmp_path, content):
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(SCENES)))
+    reload(page)
+    bad = tmp_path / "bad.zip"
+    bad.write_bytes(content)
+    page.set_input_files("#fPrj", str(bad))
+    page.wait_for_function("document.getElementById('msg').textContent.includes('تعذّر فتح المشروع')", timeout=10000)
+    assert page.evaluate("SHOTS.length") == 2, "فتح حزمة تالفة يجب ألا يمسح بيانات المستخدم"

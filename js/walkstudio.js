@@ -88,5 +88,5 @@
   };
   wcDraw();
 })();
-for (const [id, label] of PROPS) mkPicker($('props'), id, label, async im => { props[id] = trim(im); if (window.pDraw) pDraw(); });
+for (const [id, label] of PROPS) mkPicker($('props'), id, label, async im => { props[id] = trim(im); if (im._f) PROPSRC[id] = im._f; if (window.pDraw) pDraw(); });
 SHOTS.forEach((s, i) => { const o = document.createElement('option'); o.value = i; o.textContent = (i + 1) + '. ' + s.h; $('sStart').appendChild(o); });

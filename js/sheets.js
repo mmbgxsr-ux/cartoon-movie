@@ -223,6 +223,7 @@ function rescaleFrame(f, k) {
   const g = c.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high'; g.drawImage(f, 0, 0, c.width, c.height);
   const d = g.getImageData(0, 0, c.width, c.height); c.m = measure(d.data, c.width, c.height); return c;
 }
+const PROPSRC = {};       // بطاقة ← الملف الأصلي المرفوع (للحزمة الكاملة)
 const parts = {};          // لوحة ← [{ im, n, name }] صور منفصلة (كل صورة فيها n وضعيات)
 // ===== دمج عدة صور لنفس الوضعية: محاذاة بالقدمين، ثم وسيط حيث تتطابق والأنظف حيث تختلف =====
 function bestShift(R, C, w, h) {
@@ -309,7 +310,7 @@ function trim(im) {
   const o = document.createElement('canvas'); o.width = x1 - x0 + 1; o.height = y1 - y0 + 1;
   o.getContext('2d').drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height); return o;
 }
-function loadImg(file) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(file); }); }
+function loadImg(file) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => { im._f = file; res(im); }; im.onerror = rej; im.src = URL.createObjectURL(file); }); }
 
 $('fBg').onchange = async e => {
   const files = [...e.target.files]; if (!files.length) return;
@@ -330,7 +331,7 @@ function buildMap() {
 }
 function mkPicker(parent, id, label, onFile, multi) {
   const l = document.createElement('label'); l.className = 'f'; l.textContent = label + ' ';
-  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; if (multi) inp.multiple = true;
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.dataset.pick = id; if (multi) inp.multiple = true;
   inp.onchange = async e => { const fs = [...e.target.files]; if (!fs.length) return; try { if (multi) { const ims = []; for (const f of fs) ims.push(await loadImg(f)); await onFile(ims, fs); } else await onFile(await loadImg(fs[0])); l.classList.add('ok'); } catch (_) { msg('تعذّر فتح الصورة'); } e.target.value = ''; };
   l.appendChild(inp); parent.appendChild(l);
 }

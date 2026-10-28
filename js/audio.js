@@ -76,8 +76,9 @@ function tightAudio(ab) {
   } catch (_) { return ab; }
 }
 // تحميل الصوت من ملفات المستخدم: يُوزَّع على المشاهد بترتيب أسماء الملفات (01، 02، ...)
+let AUDSRC = [];   // ملفات الصوت المرفوعة بترتيب المشاهد (للحزمة الكاملة)
 async function loadAudioFiles(files) {
-  ac(); const fs = [...files].sort((x, y) => x.name.localeCompare(y.name, undefined, { numeric: true }));
+  ac(); const fs = [...files].sort((x, y) => x.name.localeCompare(y.name, undefined, { numeric: true })); AUDSRC = fs.slice(0, SHOTS.length);
   SHOTS.forEach(s => { s.eb = null; s.ed = null; }); let ok = 0;
   for (let i = 0; i < SHOTS.length && i < fs.length; i++) {
     msg('جاري قراءة الصوت ' + (i + 1) + ' / ' + Math.min(fs.length, SHOTS.length) + ' …');
