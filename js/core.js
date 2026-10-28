@@ -11,7 +11,7 @@ try {
     const ok = cs.filter(x => x && ((typeof x.text === 'string' && x.text.trim()) || hasL(x))).map(x => {
       const o = { h: String(x.h || 'مشهد'), bg: Math.min(15, Math.max(1, +x.bg || 1)), text: hasL(x) ? x.lines.map(l => String((l && l.t) || '').trim()).filter(Boolean).join(' ') : x.text.trim(), acts: Array.isArray(x.acts) && x.acts.length ? x.acts : [[0, 'talk']], props: Array.isArray(x.props) ? x.props : [] };
       if (x.spk) o.spk = String(x.spk); if (Array.isArray(x.cast) && x.cast.length) o.cast = x.cast.map(String); if (x.noWalk || o.spk || (o.cast && (o.cast.length > 1 || o.cast[0] !== 'guide'))) o.noWalk = true; if (hasL(x)) { o.lines = x.lines.filter(l => l && String(l.t || '').trim()).map(l => ({ spk: String(l.spk || 'guide'), t: String(l.t).trim() })); o.cast = [...new Set(o.lines.map(l => l.spk))]; o.spk = o.lines[0].spk === 'guide' ? undefined : o.lines[0].spk; if (o.cast.length > 1 || o.cast[0] !== 'guide') o.noWalk = true; }
-      if (x.noFace) o.noFace = true; if (x.era) o.era = String(x.era); if (x.year) o.year = String(x.year); if (x.pos && typeof x.pos === 'object' && Object.keys(x.pos).length) o.pos = x.pos; if (x.wear && typeof x.wear === 'object' && Object.keys(x.wear).length) o.wear = x.wear;
+      if (x.noFace) o.noFace = true; if (x.amb) o.amb = String(x.amb); if (x.era) o.era = String(x.era); if (x.year) o.year = String(x.year); if (x.pos && typeof x.pos === 'object' && Object.keys(x.pos).length) o.pos = x.pos; if (x.wear && typeof x.wear === 'object' && Object.keys(x.wear).length) o.wear = x.wear;
       if (x.run) o.run = true; if (x.out) o.out = x.out; if (+x.extra) o.extra = +x.extra; return o;
     });
     if (ok.length) SHOTS.splice(0, SHOTS.length, ...ok);

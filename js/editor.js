@@ -1,6 +1,6 @@
 (function () {
   const SK = 'cartoonScenes1', ACT = [['talk', 'حديث'], ['wave', 'تلويح'], ['point', 'إشارة'], ['think', 'تفكير'], ['sad', 'حزن'], ['awe', 'دهشة'], ['sit', 'جلوس'], ['joy', 'فرح'], ['pointup', 'إشارة للأعلى'], ['turn', 'التفات']];
-  const pick = s => JSON.parse(JSON.stringify({ h: s.h || '', bg: s.bg || 1, text: s.text || '', acts: s.acts || [[0, 'talk']], props: s.props || [], noWalk: !!s.noWalk, run: !!s.run, out: s.out, extra: s.extra, spk: s.spk, cast: s.cast, lines: s.lines, pos: s.pos, wear: s.wear, noFace: s.noFace, era: s.era, year: s.year }));
+  const pick = s => JSON.parse(JSON.stringify({ h: s.h || '', bg: s.bg || 1, text: s.text || '', acts: s.acts || [[0, 'talk']], props: s.props || [], noWalk: !!s.noWalk, run: !!s.run, out: s.out, extra: s.extra, spk: s.spk, cast: s.cast, lines: s.lines, pos: s.pos, wear: s.wear, noFace: s.noFace, era: s.era, year: s.year, amb: s.amb }));
   let ED = SHOTS.map(pick);
   const el = (t, p, c) => { const e = document.createElement(t); if (p) Object.assign(e, p); (c || []).forEach(x => e.appendChild(x)); return e; };
   const sel = (opts, val, fn) => { const s = el('select'); opts.forEach(([v, t]) => s.appendChild(el('option', { value: v, textContent: t }))); s.value = val; s.onchange = () => fn(s.value); return s; };
@@ -28,7 +28,8 @@
         sel([['walk', 'دخول: مشي'], ['run', 'دخول: جري'], ['none', 'بدون دخول']], s.noWalk ? 'none' : (s.run ? 'run' : 'walk'), v => { s.noWalk = v === 'none'; s.run = v === 'run'; }), propSel, cap]);
       const eraRow = el('div', { className: 'row' }, [el('span', { textContent: 'شريط العصر' }),
         el('input', { value: s.era || '', placeholder: 'العصر', style: 'background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px;width:150px', oninput() { s.era = this.value.trim() || undefined; } }),
-        el('input', { value: s.year || '', placeholder: 'السنة', style: 'background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px;width:100px', oninput() { s.year = this.value.trim() || undefined; } })]);
+        el('input', { value: s.year || '', placeholder: 'السنة', style: 'background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px;width:100px', oninput() { s.year = this.value.trim() || undefined; } }),
+        el('span', { textContent: 'صوت المكان' }), sel([['', 'حسب الخلفية'], ...(typeof AMB_OPTS !== 'undefined' ? AMB_OPTS : [])], s.amb || '', v => { s.amb = v || undefined; })]);
       const cur = () => (s.cast && s.cast.length ? s.cast.slice() : ['guide']);
       const castRow = el('div', { className: 'row' }, [el('span', { textContent: 'المتحدث' }),
         sel(CAST.map(c => [c.id, c.name]), s.spk || 'guide', v => { const a = cur(); if (!a.includes(v)) a.push(v); s.spk = v === 'guide' ? undefined : v; s.cast = a.length === 1 && a[0] === 'guide' ? undefined : a; render(); }),

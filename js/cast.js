@@ -208,5 +208,5 @@ drawChar = function (s, tt) {
     box.before(el('div', { className: 'row' }, [el('span', { textContent: 'الشخصية الأصلية في الصور:' }), fs, el('span', { textContent: '(تلتفت الشخصيات نحو بعضها تلقائيًا في مشاهد الحوار)', style: 'font-size:12px;color:#8ea0b5' })])); }
   document.getElementById('castAdd').onclick = () => { const n = CAST.length; CAST.push({ id: 'c' + Date.now().toString(36), name: 'شخصية ' + n, top: '#3d5a80', bottom: '#2b2f3a', acc: '', accColor: '#f3ead2', scale: 1, voice: '' }); castSave(); render(); };
   document.getElementById('castPreset').onclick = () => { if (CAST.length > 1 && !confirm('استبدال الطاقم الحالي بطاقم «فتح مصر»؟')) return; CAST = CAST_PRESET.map(c => Object.assign({}, c)); castSave(); render(); };
-  render(); let tries = 0; const iv = setInterval(() => { if (frames.talk || ++tries > 40) { clearInterval(iv); previews.forEach(p => paint(p.cv, p.c)); } }, 500);
+  window.castRender = render; render(); let tries = 0; const iv = setInterval(() => { if (frames.talk || ++tries > 40) { clearInterval(iv); previews.forEach(p => paint(p.cv, p.c)); } }, 500);
 })();
