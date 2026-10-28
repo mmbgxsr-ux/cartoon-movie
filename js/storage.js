@@ -9,7 +9,7 @@
     getItem(k) { if (PASS.includes(k)) return localStorage.getItem(k); return k in cache ? cache[k] : null; },
     setItem(k, v) {
       if (PASS.includes(k)) return localStorage.setItem(k, v);
-      v = String(v); cache[k] = v; if (!db) { try { localStorage.setItem(k, v); } catch (_) {} return; } Store._w(tx => tx.put(v, k));
+      v = String(v); cache[k] = v; if (!db) { try { localStorage.setItem(k, v); } catch (e) { Store.onError && Store.onError(e); } return; } Store._w(tx => tx.put(v, k));
     },
     removeItem(k) { if (PASS.includes(k)) return localStorage.removeItem(k); delete cache[k]; if (!db) { try { localStorage.removeItem(k); } catch (_) {} return; } Store._w(tx => tx.delete(k)); },
     keys() { return Object.keys(cache); },

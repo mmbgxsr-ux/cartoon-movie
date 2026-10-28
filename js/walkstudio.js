@@ -43,9 +43,9 @@
   $('wcClear').onclick = () => { wcStop(); wc.fr = []; wc.cur = 0; $('lWc').classList.remove('ok'); wcGrid(); wcDraw(); say('تم المسح.'); };
   $('wcFiles').onchange = async e => {
     const fs = [...e.target.files].filter(f => f.type.startsWith('image/')).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-    if (!fs.length) return; wcStop(); let n = 0;
-    for (const f of fs) { try { wc.fr.push({ img: await loadImg(f), name: f.name }); n++; } catch (_) {} }
-    wc.cur = 0; wcGrid(); wcDraw(); $('lWc').classList.add('ok'); say('تم تحميل ' + n + ' صورة. شغّل المعاينة ثم اضغط «استخدمها».'); e.target.value = '';
+    if (!fs.length) return; wcStop(); let n = 0, bad = 0;
+    for (const f of fs) { try { wc.fr.push({ img: await loadImg(f), name: f.name }); n++; } catch (_) { bad++; } }
+    wc.cur = 0; wcGrid(); wcDraw(); $('lWc').classList.add('ok'); say('تم تحميل ' + n + ' صورة' + (bad ? ' (تعذّر فتح ' + bad + ' ملف)' : '') + '. شغّل المعاينة ثم اضغط «استخدمها».'); e.target.value = '';
   };
   $('wcDemo').onclick = () => {
     wcStop(); wc.fr = [];

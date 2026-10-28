@@ -314,8 +314,9 @@ function loadImg(file) { return new Promise((res, rej) => { const im = new Image
 $('fBg').onchange = async e => {
   const files = [...e.target.files]; if (!files.length) return;
   bgs.length = 0; bgOrdered = false; bgBackup = null; $('bUndo').style.display = 'none';
-  for (const f of files) { try { bgs.push(await loadImg(f)); } catch (_) {} }
-  renderThumbs(); $('lBg').classList.add('ok'); buildMap(); msg(bgs.length < 15 ? 'تم تحميل ' + bgs.length + ' خلفية، والمطلوب 15' : '');
+  const failed = []; for (const f of files) { try { bgs.push(await loadImg(f)); } catch (_) { failed.push(f.name); } }
+  renderThumbs(); $('lBg').classList.add('ok'); buildMap();
+  msg((failed.length ? 'تعذّر فتح ' + failed.length + ' ملف (' + failed.slice(0, 3).join('، ') + (failed.length > 3 ? ' …' : '') + ') وتم تخطيها. ' : '') + (bgs.length < 15 ? 'تم تحميل ' + bgs.length + ' خلفية، والمطلوب 15' : ''));
 };
 function buildMap() {
   const m = $('map'); m.innerHTML = '';

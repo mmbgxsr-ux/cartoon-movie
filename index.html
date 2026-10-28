@@ -137,7 +137,7 @@
 
 <script src="js/storage.js"></script>
 <script>
-const FILES=["js/core.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/export.js", "js/settings.js", "assets/shimg.js", "js/backgrounds.js", "js/cast.js", "js/topplay.js", "js/project.js", "js/editor.js", "js/worlds.js", "js/packs.js", "js/tabs.js"];
+const FILES=["js/core.js", "js/safety.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/export.js", "js/settings.js", "assets/shimg.js", "js/backgrounds.js", "js/cast.js", "js/topplay.js", "js/project.js", "js/editor.js", "js/worlds.js", "js/packs.js", "js/tabs.js"];
 Store.init().then(()=>{FILES.forEach(f=>{const s=document.createElement('script');s.src=f;s.async=false;s.onerror=()=>{document.getElementById('msg').textContent='تعذّر تحميل '+f};document.body.appendChild(s);});});
 </script>
 </body></html>

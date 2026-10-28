@@ -76,18 +76,18 @@ async function autoBg(auto) {
   const parts = [{ text: prompt }]; bgs.forEach((im, i) => { parts.push({ text: 'صورة رقم ' + (i + 1) + ':' }); parts.push({ inlineData: { mimeType: 'image/jpeg', data: smallJpeg(im) } }); });
   busy = true; $('bAuto').disabled = true; msg('جاري تحليل الصور بواسطة Gemini …');
   try {
-    let j = null;
+    let j = null, lastSt = 0;
     for (let a = 0; a < 3 && !j; a++) {
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }) });
-      if (r.status === 429 || r.status >= 500) { msg('انتظار حد الطلبات …'); await sleep(9000 * (a + 1)); continue; }
-      const d = await r.json(); if (!r.ok) throw new Error((d.error && d.error.message) || r.status);
+      if (r.status === 429 || r.status >= 500) { lastSt = r.status; msg('انتظار حد الطلبات …'); await sleep(9000 * (a + 1)); continue; }
+      const d = await r.json(); if (!r.ok) throw new Error(gemErr(r.status, d.error && d.error.message));
       j = JSON.parse(d.candidates[0].content.parts.map(p => p.text || '').join('').replace(/```json|```/g, '').trim());
     }
-    if (!j) throw new Error('لم يصل رد');
+    if (!j) throw new Error(lastSt ? gemErr(lastSt) : 'لم يصل رد');
     const slotImg = {}; slots.forEach(s => { slotImg[s] = +j[s]; });
     bgBackup = bgs.slice(); const fixed = applyOrder(slotImg, slots); $('bUndo').style.display = '';
     msg('تم التعرف على الخلفيات وترتيبها' + (fixed ? ' (تعذّرت مطابقة ' + fixed + ' منها، راجعها)' : '') + '. راجع المصغّرات وصحّح أي خطأ من «تعيين خلفية كل مشهد».');
-  } catch (e) { msg('خطأ Gemini: ' + e.message); }
+  } catch (e) { msg('خطأ Gemini: ' + errText(e)); }
   busy = false; $('bAuto').disabled = false;
 }
 $('bAuto').onclick = () => autoBg(false);

@@ -15,10 +15,11 @@ function recalc() {
 async function gen(s) {
   const _c = typeof castById === 'function' ? castById(s.spk || 'guide') : null, _g = !_c || _c.id === 'guide';
   const body = { contents: [{ parts: [{ text: (_g ? 'اقرأ بلهجة مصرية مرحة وحماسية كمدرس حقيقي يشرح لطلابه: ' : 'اقرأ بلهجة مصرية بصوت الشخصية «' + _c.name + '» في قصة تاريخية تعليمية للطلاب، بتمثيل طبيعي: ') + s.text }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: (_c && _c.voice) || $('sGv').value } } } } };
+  let lastSt = 0;
   for (let a = 0; a < 5; a++) {
     const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + $('sGm').value + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': $('kKey').value.trim() }, body: JSON.stringify(body) });
-    if (r.status === 429 || r.status >= 500) { msg('انتظار حد الطلبات… محاولة ' + (a + 2)); await sleep(9000 * (a + 1)); continue; }
-    const j = await r.json(); if (!r.ok) throw new Error((j.error && j.error.message) || r.status);
+    if (r.status === 429 || r.status >= 500) { lastSt = r.status; msg('انتظار حد الطلبات… محاولة ' + (a + 2)); await sleep(9000 * (a + 1)); continue; }
+    const j = await r.json(); if (!r.ok) throw new Error(gemErr(r.status, j.error && j.error.message));
     const p = j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts.find(x => x.inlineData);
     if (!p) { await sleep(2000); continue; }
     const bin = atob(p.inlineData.data), n = bin.length >> 1, pcm = new Int16Array(n);
@@ -26,7 +27,7 @@ async function gen(s) {
     const buf = ac().createBuffer(1, n, 24000), ch = buf.getChannelData(0); for (let i = 0; i < n; i++) ch[i] = pcm[i] / 32768;
     s.pcm = pcm; s.abuf = buf; s.adur = buf.duration; return;
   }
-  throw new Error('فشل توليد الصوت');
+  throw new Error(lastSt ? gemErr(lastSt) : 'فشل توليد الصوت');
 }
 // مشهد حوار: يُولَّد صوت كل سطر بصوت صاحبه ثم تُدمج في مقطع واحد، ويُسجَّل وقت كل سطر (lineT) ليعرف الرسم من يتكلم
 async function genLines(s) {
@@ -47,7 +48,7 @@ async function genAll() {
   try {
     for (let i = 0; i < SHOTS.length; i++) { const s = SHOTS[i]; const v = vk(s); if (s.abuf && s.gk === v) continue; msg('جاري توليد الصوت ' + (i + 1) + ' من ' + SHOTS.length + ' …'); await (s.lines && s.lines.length ? genLines(s) : gen(s)); s.gk = v; await sleep(800); }
     msg(''); recalc(); return true;
-  } catch (e) { msg('خطأ Gemini: ' + e.message); return false; }
+  } catch (e) { msg('خطأ Gemini: ' + errText(e)); return false; }
 }
 $('bWav').onclick = async () => {
   if (!useGem()) { msg('أدخل مفتاح Gemini أولاً (صوت الجهاز لا يمكن حفظه كملف)'); return; } if (busy) return; busy = true;

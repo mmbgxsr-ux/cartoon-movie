@@ -168,14 +168,14 @@ async function detectMouths(n, silent) {
   const parts = [{ text: prompt }]; fr.forEach((f, i) => { parts.push({ text: 'frame ' + (i + 1) + ':' }); parts.push({ inlineData: { mimeType: 'image/jpeg', data: frameJpeg(f) } }); });
   const was = busy; msg('جاري اكتشاف مكان الفم في «' + SH[n].label + '» …');
   try {
-    let arr = null;
+    let arr = null, lastSt = 0;
     for (let a = 0; a < 3 && !arr; a++) {
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }) });
-      if (r.status === 429 || r.status >= 500) { await sleep(8000 * (a + 1)); continue; }
-      const d = await r.json(); if (!r.ok) throw new Error((d.error && d.error.message) || r.status);
+      if (r.status === 429 || r.status >= 500) { lastSt = r.status; await sleep(8000 * (a + 1)); continue; }
+      const d = await r.json(); if (!r.ok) throw new Error(gemErr(r.status, d.error && d.error.message));
       arr = JSON.parse(d.candidates[0].content.parts.map(p => p.text || '').join('').replace(/```json|```/g, '').trim());
     }
-    if (!Array.isArray(arr)) throw new Error('لم يصل رد صالح');
+    if (!Array.isArray(arr)) throw new Error(lastSt ? gemErr(lastSt) : 'لم يصل رد صالح');
     let ok = 0;
     arr.forEach(o => {
       const f = fr[(o.i | 0) - 1]; if (!f || !o) return;
@@ -186,7 +186,7 @@ async function detectMouths(n, silent) {
       f.mouth = { x: x * f.width, y: y * f.height, w: w * f.width, r: Math.max(-25, Math.min(25, +o.roll || 0)), on: true, auto: 1 }; f._sk = null; ok++;
     });
     saveMouths(n); msg('تم تحديد الفم في ' + ok + ' من ' + fr.length + ' إطار («' + SH[n].label + '»)'); drawMouthPrev(); return true;
-  } catch (e) { msg('تعذّر اكتشاف الفم: ' + e.message + ' — يمكنك ضبطه يدويًا'); return false; }
+  } catch (e) { msg('تعذّر اكتشاف الفم: ' + errText(e) + ' — يمكنك ضبطه يدويًا'); return false; }
 }
 const mSel = $('mSheet'), mFr = $('mFrame'), mc = $('mc'), mg = mc.getContext('2d');
 function refreshMouthUI() {
