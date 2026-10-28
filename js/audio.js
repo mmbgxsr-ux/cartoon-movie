@@ -119,10 +119,10 @@ function startRec() {
   rec.onstop = () => { const a = $('dl'); a.href = URL.createObjectURL(new Blob(chunksRec, { type: recMime })); a.download = 'movie.' + recExt; a.textContent = 'تحميل الفيديو (' + recExt.toUpperCase() + ')'; if (autoDl) { autoDl = false; msg('تم إنهاء التسجيل وبدأ التحميل'); a.click(); } };
   rec.start(1000);
 }
-function stopAll() { wlOff(); ambStop(); playing = false; $('bPlay').textContent = 'تشغيل'; $('bPlay').classList.remove('on'); if (window.speechSynthesis) speechSynthesis.cancel(); try { cur && cur.stop(); } catch (_) {} if (rec && rec.state !== 'inactive') rec.stop(); rec = null; }
+function stopAll() { hideQ(); wlOff(); ambStop(); playing = false; $('bPlay').textContent = 'تشغيل'; $('bPlay').classList.remove('on'); if (window.speechSynthesis) speechSynthesis.cancel(); try { cur && cur.stop(); } catch (_) {} if (rec && rec.state !== 'inactive') rec.stop(); rec = null; }
 function begin() {
   recalc();
-  SHOTS.forEach(x => { x.speaking = false; x.done = false; x.hold = 0; x.ci = -1; });
+  SHOTS.forEach(x => { x.speaking = false; x.done = false; x.hold = 0; x.ci = -1; x._qd = false; });
   if (window.speechSynthesis && $('cTts').checked && !useGem() && !voices().length) msg('لم يُعثر على صوت عربي؛ فعّل صوتًا عربيًا من إعدادات الجهاز (تحويل النص إلى كلام)');
   idx = +$('sStart').value; t = 0; spoken = false; playing = true; $('bPlay').textContent = 'إيقاف'; $('bPlay').classList.add('on'); ambStart(); wlOn(); startRec(); }
 $('bVid').onclick = () => {

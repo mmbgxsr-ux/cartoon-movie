@@ -285,7 +285,8 @@ function cutParts(P, cfg) {
 }
 function build(name) {
   const cfg = SH[name], P = parts[name];
-  const out = P && P.length ? cutParts(P, cfg) : cutGrid(imgs[name], cfg, cfg.cols, cfg.rows);
+  const pre = PRECUT[name]; delete PRECUT[name];
+  const out = pre || (P && P.length ? cutParts(P, cfg) : cutGrid(imgs[name], cfg, cfg.cols, cfg.rows));
   out.forEach(f => {
     const m = f.m; f.bb = { x0: m.x0, y0: m.y0, x1: m.x1, y1: m.y1 }; f.ax = (cfg.nm && !cfg.axl) ? m.axT : m.axL; f.hx = m.hx;
     headInfo(f); f.hx = f._hx; f.mouth = { x: f._hx, y: 0, w: 0, r: 0, on: !cfg.nm && !cfg.mm };
