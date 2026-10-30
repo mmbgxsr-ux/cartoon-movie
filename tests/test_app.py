@@ -408,3 +408,44 @@ def test_sheet_frames_cache_is_reused_on_second_open(page):
     page.wait_for_function(ready, timeout=60000)
     assert page.evaluate("FCACHE.hits") == n, "كل الصفحات يجب أن تُستعاد من التخزين المؤقت في الفتح الثاني"
     assert page.errors == []
+
+
+# ---------- المخطط الزمني ----------
+def _wav_phrases(rate=24000):
+    """ثلاث «عبارات» (نغمات متقطعة) تفصل بينها وقفات، لتظهر حدود العبارات في المخطط."""
+    import io
+    import math
+    import struct
+    import wave
+    pcm = []
+    for dur, gap in ((1.2, .5), (1.0, .5), (1.4, 0)):
+        for i in range(int(dur * rate)):
+            env = min(1, i / 800, (int(dur * rate) - i) / 800)
+            pcm.append(int(9000 * env * math.sin(2 * math.pi * 180 * i / rate) * (0.6 + 0.4 * math.sin(2 * math.pi * 4 * i / rate))))
+        pcm += [0] * int(gap * rate)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+        w.writeframes(b"".join(struct.pack("<h", v) for v in pcm))
+    return buf.getvalue()
+
+
+def test_timeline_shows_audio_acts_and_props(page, tmp_path):
+    scenes = [dict(SCENES[0], text="نص تجريبي للمخطط", acts=[[0, "wave"], [0.5, "talk"]], noWalk=True,
+                   props=[{"id": "card1", "cap": "بطاقة", "f0": 0.2, "f1": 0.6}])]
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    aud = tmp_path / "01.wav"
+    aud.write_bytes(_wav_phrases())
+    page.set_input_files("#fAud", str(aud))
+    page.wait_for_function("SHOTS[0].eb", timeout=15000)
+    page.evaluate("document.getElementById('dTl').open = true")
+    page.wait_for_function("document.getElementById('tlNote').textContent.includes('مدة الصوت')", timeout=5000)
+    px = page.evaluate("""() => { const g = document.getElementById('tl').getContext('2d'), d = g.getImageData(0, 0, 900, 210).data; let green = 0, gold = 0, blue = 0;
+        for (let i = 0; i < d.length; i += 4) { const r = d[i], gr = d[i + 1], b = d[i + 2];
+          if (gr > 190 && r < 90 && b > 120 && b < 170) green++; else if (r > 220 && gr > 140 && gr < 190 && b < 80) gold++; else if (b > 90 && r < 70 && gr < 100) blue++; }
+        return [green, gold, blue]; }""")
+    assert px[0] > 50, "علامات الإيماءات (أخضر) غير مرسومة"
+    assert px[2] > 500, "غلاف الصوت غير مرسوم"
+    assert page.evaluate("analyzeAudio(AB(SHOTS[0])).ev.length") >= 1, "يجب أن تُكتشف حدود عبارات من الوقفات"
+    assert page.errors == []
