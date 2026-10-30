@@ -57,11 +57,12 @@
   // ---------- جمع المحتوى من الذاكرة ----------
   const ext = (name, type) => { const m = /\.([A-Za-z0-9]{1,5})$/.exec(name || ''); if (m) return m[1].toLowerCase(); return ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'audio/wav': 'wav', 'audio/mpeg': 'mp3' })[type] || 'bin'; };
   const asBlob = async im => { if (im._f) return im._f; if (im.src && im.src.startsWith('blob:')) return (await fetch(im.src)).blob(); return null; };   // الصور الافتراضية المدمجة (data:) لا تُحفظ
-  async function buildPkg() {
+  async function collect(quiet) {          // تجمع الملفات والمانيفست بلا ضغط (يستعملها التصدير والحفظ التلقائي)
+    const sy = quiet ? () => {} : say;
     const entries = [], man = { app: 'cartoon-movie', v: 2, date: new Date().toISOString(), data: {}, grids: {}, assets: { bg: [], sheets: {}, props: {}, audio: [], gen: [] } };
     (window.PROJECT_KEYS || []).forEach(k => { try { const v = Store.getItem(k); if (v != null) man.data[k] = v; } catch (_) {} });
     const add = (dir, blob, name) => { const path = dir + '/' + String(entries.length).padStart(4, '0') + '.' + ext(name, blob.type); entries.push({ path, blob }); return path; };
-    say('جاري تجميع الصور …');
+    sy('جاري تجميع الصور …');
     for (const im of bgs) { const b = await asBlob(im); if (b) man.assets.bg.push({ path: add('bg', b, b.name), name: b.name || '' }); }
     for (const n of Object.keys(SH)) {
       man.grids[n] = [SH[n].cols, SH[n].rows.length];
@@ -71,9 +72,13 @@
       if (list.length) man.assets.sheets[n] = { sep: !!(parts[n] && parts[n].length), files: list.map(x => ({ path: add('sheets', x.b, x.name), name: x.name || '', n: x.n, g: x.g })) };
     }
     for (const id of Object.keys(PROPSRC)) if (PROPSRC[id]) man.assets.props[id] = { path: add('props', PROPSRC[id], PROPSRC[id].name), name: PROPSRC[id].name || '' };
-    say('جاري تجميع الصوت …');
+    sy('جاري تجميع الصوت …');
     (typeof AUDSRC !== 'undefined' ? AUDSRC : []).forEach(f => { man.assets.audio.push({ path: add('audio', f, f.name), name: f.name }); });
     SHOTS.forEach((s, i) => { if (s.pcm && s.gk) { const path = 'gen/' + String(i).padStart(3, '0') + '.pcm'; entries.push({ path, blob: new Blob([s.pcm]) }); man.assets.gen.push({ i, path, gk: s.gk, lineT: s.lineT || null }); } });
+    return { entries, man };
+  }
+  async function buildPkg() {
+    const { entries, man } = await collect(false);
     entries.unshift({ path: 'manifest.json', blob: new Blob([JSON.stringify(man, null, 1)], { type: 'application/json' }) });
     say('جاري إنشاء الملف …');
     return { blob: await writeZip(entries), man, n: entries.length - 1 };
@@ -106,10 +111,12 @@
     say('تم فتح الحزمة، جاري إعادة التحميل …'); setTimeout(() => Store.reload(), 600);
   }
   const mkFiles = (list, blobs) => list.map(x => new File([blobs[x.path]], x.name || x.path.split('/').pop(), { type: blobs[x.path].type || '' }));
+  let restoredNow = false;
   async function applyPending() {
     if (!window.indexedDB) return;
     let db, pkg; try { db = await pdb(); pkg = await pdo(db, 'readonly', s => s.get('pkg')); if (pkg) await pdo(db, 'readwrite', s => s.delete('pkg')); db.close(); } catch (_) { return; }   // يُحذف أولًا حتى لا يتكرر التطبيق إن فشل شيء
     if (!pkg || !pkg.manifest) return;
+    restoredNow = true;
     // ننتظر اكتمال بناء الواجهة والوحدات واللوحات الافتراضية
     for (let i = 0; i < 100; i++) { const ready = document.getElementById('tabs').children.length > 0 && Object.keys(SH).every(n => !SHIMG[n] || imgs[n]); if (ready) break; await sleep(100); }
     const { grids, assets: A } = pkg.manifest, B = pkg.blobs, fail = []; let nBg = 0, nSh = 0, nPr = 0, nAu = 0, nGen = 0;
@@ -136,7 +143,68 @@
     msg('تم استرجاع الحزمة: ' + nBg + ' خلفية، ' + nSh + ' لوحة، ' + nPr + ' بطاقة، ' + nAu + ' ملف صوت' + (nGen ? '، ' + nGen + ' مشهد صوته مولَّد' : '') + (fail.length ? ' — تعذّر: ' + fail.join('، ') : ''));
   }
 
-  window.CMPack = { save, openZip, build: buildPkg, readZip, writeZip, ready: false };   // ready=true بعد انتهاء استعادة أي حزمة معلّقة
+
+  // ---------- الحفظ التلقائي للصور والصوت ----------
+  // المشاهد والإعدادات تُحفظ أصلًا في التخزين عند كل تعديل، أما الصور والصوت فتبقى في الذاكرة فقط وتضيع عند الإغلاق المفاجئ.
+  // نحفظ لقطة منها (الملفات الأصلية) في IndexedDB كل فترة إن تغيّرت، ونعرض «استعادة» عند الفتح التالي. الاستعادة تمرّ عبر applyPending نفسها.
+  const SDB = 'cartoon-movie-session', SKEY = 'snap', AUTO_MS = 20000, AUTO_MAX = 300 * 1048576;
+  const sdb = () => new Promise((res, rej) => { const o = indexedDB.open(SDB, 1); o.onupgradeneeded = () => o.result.createObjectStore('s'); o.onsuccess = () => res(o.result); o.onerror = () => rej(o.error); });
+  const sdo = (db, mode, fn) => new Promise((res, rej) => { const t = db.transaction('s', mode), r = fn(t.objectStore('s')); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
+  const fsig = f => f ? (f.name || '') + ':' + (f.size || 0) + ':' + (f.lastModified || 0) : '';
+  const isig = im => !im ? '' : im._f ? fsig(im._f) : String(im.src || '').slice(0, 40);
+  const auds = () => (typeof AUDSRC !== 'undefined' ? AUDSRC : []);
+  const sigNow = () => JSON.stringify([bgs.map(isig),
+    Object.keys(SH).map(n => [n, SH[n].cols, SH[n].rows.length, parts[n] && parts[n].length ? parts[n].map(p => [isig(p.im), p.n, p.g]) : isig(imgs[n])]),
+    Object.keys(PROPSRC).map(k => [k, fsig(PROPSRC[k])]), auds().map(fsig), SHOTS.map(x => x.pcm && x.gk ? x.gk + ':' + x.pcm.length : '')]);
+  const blobImg = im => !!im && (!!im._f || /^blob:/.test(im.src || ''));
+  const hasAssets = () => bgs.some(blobImg) || Object.keys(SH).some(n => blobImg(imgs[n]) || (parts[n] && parts[n].length)) || Object.keys(PROPSRC).some(k => PROPSRC[k]) || auds().length > 0 || SHOTS.some(x => x.pcm && x.gk);
+  let lastSig = null, saving = false, paused = true, warned = false;   // paused حتى نفحص وجود لقطة قديمة، كي لا نمسحها بحالة فارغة
+  async function autosaveNow(force) {
+    if (!window.indexedDB || saving || paused) return false;
+    if (!force && (playing || EXPORTING || busy)) return false;
+    const sig = sigNow(); if (sig === lastSig) return false;
+    saving = true;
+    try {
+      const { entries, man } = await collect(true), blobs = {}; let total = 0;
+      entries.forEach(e => { blobs[e.path] = e.blob; total += e.blob.size || 0; });
+      if (total > AUTO_MAX) { if (!warned) { warned = true; say('الحفظ التلقائي متوقف لأن الملفات كبيرة (أكثر من 300 ميجابايت). احفظ الحزمة 📦 يدويًا'); } lastSig = sig; return false; }
+      const db = await sdb();
+      try {
+        if (!entries.length) await sdo(db, 'readwrite', st => st.delete(SKEY));   // لا شيء لحفظه: تُمسح اللقطة القديمة
+        else await sdo(db, 'readwrite', st => st.put({ date: man.date, manifest: { grids: man.grids, assets: man.assets }, blobs }, SKEY));
+      } finally { db.close(); }
+      lastSig = sig; return true;
+    } catch (e) { console.error('autosave', e); Store.onError && Store.onError(e); return false; }
+    finally { saving = false; }
+  }
+  function showRestoreBar(snap) {
+    const bar = document.createElement('div'); bar.id = 'restoreBar'; bar.setAttribute('role', 'region'); bar.setAttribute('aria-label', 'استعادة الجلسة');
+    bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:98;background:#1d3b53;color:#fff;padding:10px 14px;font-size:14px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap';
+    const A = snap.manifest.assets, when = snap.date ? new Date(snap.date).toLocaleString('ar-EG') : '';
+    const txt = document.createElement('span');
+    txt.textContent = 'عُثر على جلسة محفوظة تلقائيًا' + (when ? ' (' + when + ')' : '') + ': ' + A.bg.length + ' خلفية، ' + Object.keys(A.sheets).length + ' لوحة، ' + Object.keys(A.props).length + ' بطاقة، ' + A.audio.length + ' صوت';
+    const mk = label => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'padding:6px 14px;font-size:14px;cursor:pointer'; return b; };
+    const yes = mk('استعادة'), no = mk('تجاهل');
+    yes.onclick = async () => {
+      yes.disabled = no.disabled = true;
+      try { const db = await pdb(); try { await pdo(db, 'readwrite', st => st.put({ manifest: snap.manifest, blobs: snap.blobs }, 'pkg')); } finally { db.close(); } say('جاري استعادة الجلسة …'); Store.reload(); }
+      catch (e) { say('تعذّرت الاستعادة: ' + errText(e)); yes.disabled = no.disabled = false; }
+    };
+    no.onclick = () => { if (!confirm('تجاهل الجلسة المحفوظة؟ ستُحذف الصور والصوت المحفوظة تلقائيًا.')) return; bar.remove(); paused = false; };
+    bar.append(txt, yes, no); document.body.appendChild(bar);
+  }
+  async function offerRestore() {
+    if (!window.indexedDB) return;
+    let snap = null;
+    try { const db = await sdb(); try { snap = await sdo(db, 'readonly', st => st.get(SKEY)); } finally { db.close(); } } catch (_) {}
+    if (restoredNow) lastSig = sigNow();    // الحالة الآن مطابقة للقطة المستعادة: لا حاجة لإعادة كتابتها
+    if (snap && snap.manifest && !restoredNow && !hasAssets()) { showRestoreBar(snap); return; }   // paused يبقى حتى يقرّر المستخدم
+    paused = false;
+  }
+  setInterval(() => { autosaveNow(); }, AUTO_MS);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') autosaveNow(); });
+
+  window.CMPack = { save, openZip, build: buildPkg, readZip, writeZip, autosaveNow, ready: false };   // ready=true بعد انتهاء استعادة أي حزمة معلّقة
   const b = document.getElementById('bPkgSave'); if (b) b.onclick = save;
-  (async () => { try { await applyPending(); } catch (e) { console.error(e); msg('تعذّر استرجاع الحزمة: ' + errText(e)); } finally { CMPack.ready = true; } })();
+  (async () => { try { await applyPending(); } catch (e) { console.error(e); msg('تعذّر استرجاع الحزمة: ' + errText(e)); } finally { CMPack.ready = true; offerRestore().catch(console.error); } })();
 })();
