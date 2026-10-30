@@ -38,7 +38,7 @@
   }
   window.castAddRole = addRole;
   const anchor = document.getElementById('castAdd'); if (!anchor) return;
-  const sel = document.createElement('select'); sel.id = 'roleSel'; ROLES.forEach(r => { const o = document.createElement('option'); o.value = r.key; o.textContent = r.name; sel.appendChild(o); });
+  const sel = document.createElement('select'); sel.id = 'roleSel'; sel.title = 'نوع الشخصية الجديدة'; ROLES.forEach(r => { const o = document.createElement('option'); o.value = r.key; o.textContent = r.name; sel.appendChild(o); });
   const btn = document.createElement('button'); btn.id = 'roleAdd'; btn.type = 'button'; btn.textContent = '➕ إضافة دور جاهز'; btn.onclick = () => { const c = addRole(sel.value); if (c) say('أُضيفت شخصية «' + c.name + '». عدّل اسمها (مثل «خالد») لتظهر في الحوار'); };
   anchor.parentNode.append(sel, btn);
 })();

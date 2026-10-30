@@ -83,7 +83,7 @@ function drawFx(s) {
 
 // ===== فهرس المشاهد + تذكّر آخر مشهد =====
 let MARK = -1, SAVEDIDX = -1; const LSK = 'cartoonLastScene1';
-SHOTS.forEach((s, i) => { const r = document.createElement('div'); r.className = 'shot'; r.id = 'ix' + i; r.innerHTML = '<span>' + (i + 1) + '. ' + s.h + '</span><span>▶</span>'; r.onclick = () => jumpTo(i); $('idxList').appendChild(r); });
+SHOTS.forEach((s, i) => { const r = document.createElement('div'); r.className = 'shot'; r.id = 'ix' + i; const t1 = document.createElement('span'); t1.textContent = (i + 1) + '. ' + s.h; const t2 = document.createElement('span'); t2.textContent = '▶'; r.append(t1, t2); r.onclick = () => jumpTo(i); $('idxList').appendChild(r); });
 async function jumpTo(i) {
   if (rec) { msg('لا يمكن الانتقال أثناء تسجيل الفيديو'); return; }
   $('sStart').value = i; if (playing) { stopAll(); await sleep(200); }
@@ -107,8 +107,14 @@ function stepSfx(v) {
     const g = a.createGain(); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(peak * v, now + .008); g.gain.exponentialRampToValueAtTime(.0008, now + dec);
     src.connect(fl); fl.connect(g); sfxOut(g); src.start(now, Math.random() * 2, dec + .05);
   };
-  layer('lowpass', 430, 0, .20, .12);   // وقع القدم
-  layer('bandpass', 2300, .8, .05, .09); // خشخشة العشب
+  const T = gOn() ? GT() : 'grass', CB = typeof CUR_BG !== 'undefined' ? CUR_BG : 0;   // صوت الخطوة يتبع نوع الأرض
+  if (T === 'gloss') { if (CB === 14) { layer('lowpass', 380, 0, .2, .09); layer('bandpass', 1500, 3, .07, .05); } else { layer('bandpass', 1100, 2.5, .16, .06); layer('lowpass', 300, 0, .10, .08); } }
+  else if (T === 'dust') { layer('lowpass', 380, 0, .14, .10); layer('highpass', 2600, 0, .05, .12); }
+  else if (T === 'snow') { layer('lowpass', 700, 0, .10, .10); layer('bandpass', 3800, 1.2, .06, .14); }
+  else if (T === 'pebble') { layer('bandpass', 2200, 3, .10, .05); layer('bandpass', 3400, 3, .07, .04); layer('lowpass', 400, 0, .10, .08); }
+  else if (T === 'wet') { layer('lowpass', 500, 0, .12, .12); layer('bandpass', 1800, .7, .09, .22); }
+  else if (T === 'water') { layer('lowpass', 260, 0, .12, .18); }
+  else { layer('lowpass', 430, 0, .20, .12); layer('bandpass', 2300, .8, .05, .09); }   // عشب: وقع القدم + خشخشة
 }
 function popSfx() {
   const a = AC, now = a.currentTime, o = a.createOscillator(), g = a.createGain(); o.type = 'sine';

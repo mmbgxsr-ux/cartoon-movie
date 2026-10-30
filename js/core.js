@@ -1,5 +1,6 @@
 const PRECUT = {};   // نتيجة قص جاهزة من التخزين المؤقت (js/framecache.js) يستعملها build() بدل الحساب
 const PERF = { on: /[?&]perf\b/.test(location.search) };   // عدّاد الأداء: افتح الصفحة بإضافة ?perf=1 (يُعرَّف في js/perf.js)
+let QPOSE = null;   // وضعية الشخصية أثناء السؤال: { mode, t0 } (يضبطها js/decision.js)
 let QWAIT = false;   // يصبح true أثناء عرض سؤال لحظة القرار (js/decision.js)
 
 const IN = 2, OUT = 1.2, RATE = 9.5, WAVE_HOLD = 2.6;   // WAVE_HOLD: مدة التلويح بالثواني بعد رفع اليد

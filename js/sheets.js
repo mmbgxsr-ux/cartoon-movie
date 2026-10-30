@@ -327,7 +327,7 @@ function buildMap() {
     const sel = document.createElement('select');
     for (let n = 1; n <= bgs.length; n++) { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); }
     sel.value = Math.min(s.bg, bgs.length) || 1; s.map = +sel.value; sel.onchange = () => { s.map = +sel.value; };
-    row.innerHTML = '<span>' + (i + 1) + '. ' + s.h + '</span>'; row.appendChild(sel); m.appendChild(row);
+    const lb = document.createElement('span'); lb.textContent = (i + 1) + '. ' + s.h; row.appendChild(lb); row.appendChild(sel); m.appendChild(row);
   });
 }
 function mkPicker(parent, id, label, onFile, multi) {

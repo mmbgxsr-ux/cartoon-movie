@@ -8,6 +8,7 @@ const AB = s => !$('cTts').checked ? null : EMBON() ? s.eb : (gemKey() ? s.abuf 
 const AD = s => EMBON() ? s.ed : s.adur;
 try { $('kKey').value = Store.getItem('gk') || ''; } catch (_) {}
 $('kKey').oninput = () => { try { Store.setItem('gk', $('kKey').value.trim()); } catch (_) {} };
+$('kDel').onclick = () => { $('kKey').value = ''; try { Store.removeItem('gk'); } catch (_) {} msg('تم حذف المفتاح من هذا المتصفح'); };
 function recalc() {
   SHOTS.forEach(s => { const base = AB(s) ? AD(s) + .35 : Math.max(6, s.text.length / RATE); s.main = base + (s.extra || 0); s.dur = s.inT + s.main + s.outT; });
   TOTAL = SHOTS.reduce((a, s) => a + s.dur, 0);

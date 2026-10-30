@@ -15,6 +15,9 @@ let EXPORTING = false, EXP_END = false;
 let idx = 0, t = 0, playing = false, last = performance.now(), clock = 0, spoken = false, rec = null, chunksRec = [], recExt = 'mp4', recMime = 'video/mp4';
 let LASTSH = null, FGC = null, GROUND = H - 130, GSC = .94, CUR_BG = 1, CUR_AMB = null;   // الأرض والمنظور واللون المحيط تتبع كل مشهد
 const LIGHT = { 5: -.8, 9: .4, 12: .9, 14: .3, 15: .5, 1: .6 };        // اتجاه الضوء: موجب = الظل نحو اليمين
+// نوع الأرض لكل خلفية: يحدد الغبار/الماء/الفقاعات/الانعكاس وصوت الخطوات (الافتراضي: غبار رمل/تراب)
+const GTYPE = { 1: 'gloss', 14: 'gloss', 5: 'snow', 6: 'grass', 7: 'grass', 9: 'pebble', 12: 'water', 13: 'wet', 15: 'none' }, GLOSS = { 1: 1, 14: .45 };
+const gOn = () => $('cGround') && $('cGround').checked, GT = () => GTYPE[CUR_BG] || 'dust', dustOK = () => !gOn() || ['dust', 'snow', 'pebble'].includes(GT());
 const BGAMB = {}, GRG = { 5: 648, 8: 655, 10: 640, 14: 640 }, GRS = { 5: .97, 8: 1.03 }, GRX = { 5: .15 };   // أرض ثابتة (صخرة/أرض أمامية) ومنظور لكل خلفية
 function ambOf(k) {
   if (BGAMB[k]) return BGAMB[k]; const im = bgs[k - 1]; if (!im) return null;
@@ -145,6 +148,10 @@ function blit(name, i, x, scl, dy, alpha, o) {
   { // ظل ساقط واقعي على الأرض من شكل الشخصية نفسه
     const L = LIGHT[CUR_BG] != null ? LIGHT[CUR_BG] : .55; ctx.save(); ctx.globalAlpha = Math.min(1, alpha) * .40; ctx.transform(1, 0, -L * .5, -.11, 0, 0); if (FL) ctx.scale(-1, 1); if ('filter' in ctx) ctx.filter = 'blur(' + Math.max(2, 5 * sc).toFixed(1) + 'px)';
     ctx.drawImage(silh(f), -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc); ctx.restore(); }
+  if (GLOSS[CUR_BG] && gOn() && !greenOn()) {   // أرضية لامعة (المركبة): انعكاس باهت يتلاشى بالعمق
+    const img = tinted(f), gk = GLOSS[CUR_BG];
+    for (const [a0, a1, al] of [[0, 30, .36], [30, 64, .22], [64, 100, .12], [100, 140, .05]]) { ctx.save(); ctx.beginPath(); ctx.rect(-700, a0, 1400, a1 - a0); ctx.clip(); ctx.globalAlpha = Math.min(1, alpha) * al * gk;
+      if (f.lift) ctx.translate(0, f.lift * sc); ctx.scale(1, -1); if (FL) ctx.scale(-1, 1); ctx.drawImage(img, -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc); ctx.restore(); } }
   if (f.lift) ctx.translate(0, -f.lift * sc); if (FL) ctx.scale(-1, 1);   // إطار في الهواء (جري/قفز): الظل يبقى على الأرض والجسم يرتفع
   ctx.drawImage(CEL() && !greenOn() ? inked(f) : tinted(f), -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc);
   if ($('cRim') && $('cRim').checked && !greenOn()) { const rm = rimOf(f); if (rm) ctx.drawImage(rm, -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc); }
@@ -167,13 +174,35 @@ function shadow(x, w, a) {
   if (cs !== '0,0,0' || ($('cRim') && $('cRim').checked)) { const g2 = ctx.createRadialGradient(0, 0, 0, 0, 0, w * .5); g2.addColorStop(0, 'rgba(' + cs + ',.9)'); g2.addColorStop(.55, 'rgba(' + cs + ',.45)'); g2.addColorStop(1, 'rgba(' + cs + ',0)'); ctx.scale(1, .6); ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(0, 0, w * .5, 0, 7); ctx.fill(); }   // ظل التصاق ضيّق وداكن تحت القدمين
   ctx.restore();
 }
+// ===== مؤثرات الأرض حسب نوعها: عشب يتطاير، تموّجات وقطرات في الماء الضحل، فقاعات تحت الماء =====
+function footFx(x, age, A, scl) {
+  const T = GT(), a = Math.max(0, 1 - age) * A; if (a <= .01) return; ctx.save();
+  if (T === 'grass') {   // شفرات عشب منحنية بلون عشب الأرض نفسها، بأطوال متفاوتة
+    const gc = groundCol(); ctx.strokeStyle = 'rgba(' + Math.min(255, gc[0] + 45) + ',' + Math.min(255, gc[1] + 55) + ',' + Math.min(255, gc[2] + 25) + ',' + (.6 * a).toFixed(3) + ')'; ctx.lineWidth = 2 * scl; ctx.lineCap = 'round';
+    for (let k = 0; k < 6; k++) { const x0 = x - (14 + k * 10) * scl, h = (7 + age * 16) * (1 + (k % 3) * .3) * scl, sw = (k % 2 ? 1 : -1) * (3 + age * 7) * scl; ctx.beginPath(); ctx.moveTo(x0, GROUND - 2); ctx.quadraticCurveTo(x0 + sw * .2, GROUND - 2 - h * .6, x0 + sw, GROUND - 2 - h); ctx.stroke(); }
+  } else if (T === 'wet') {   // طين رطب: رذاذ داكن صغير يتطاير من تحت القدم
+    const gc = groundCol(); ctx.fillStyle = 'rgba(' + Math.round(gc[0] * .55) + ',' + Math.round(gc[1] * .5) + ',' + Math.round(gc[2] * .45) + ',' + (.85 * a).toFixed(3) + ')';
+    for (let k = 0; k < 5; k++) { const q = Math.min(1, age * 1.4), dy = Math.sin(q * Math.PI) * (10 + k * 7) * scl; ctx.beginPath(); ctx.arc(x - (8 + k * 12) * scl, GROUND - dy, (2.6 + (k % 3) * 1.1) * scl, 0, 7); ctx.fill(); }
+  } else if (T === 'water') {
+    ctx.strokeStyle = 'rgba(255,255,255,' + (.7 * a).toFixed(3) + ')'; ctx.fillStyle = 'rgba(220,245,255,' + (.18 * a).toFixed(3) + ')'; ctx.lineWidth = 1.6 * scl;
+    for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(x + Math.sin(age * 6 + k * 2) * 9 * scl, GROUND - (10 + age * 120 + k * 22) * scl, (2.5 + k * 1.2) * scl, 0, 7); ctx.fill(); ctx.stroke(); }
+  }
+  ctx.restore();
+}
+function standFx(X, A) {   // أثناء الوقوف: فقاعات تصعد تحت الماء
+  const T = GT(), sz = UI.size() * GSC; if (T !== 'water') return; ctx.save();
+  if (T === 'water') { ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.fillStyle = 'rgba(220,245,255,.16)'; ctx.lineWidth = 1.5;
+    for (let k = 0; k < 4; k++) { const p = (clock * .3 + k * .27) % 1; ctx.globalAlpha = Math.sin(p * Math.PI) * .6 * A; ctx.beginPath(); ctx.arc(X + 24 + Math.sin(clock * 1.7 + k * 2.3) * 14 + k * 9, GROUND - (300 + p * 190) * sz, 2.5 + (k % 3) * 1.6, 0, 7); ctx.fill(); ctx.stroke(); } }
+  ctx.restore();
+}
 const RSTR = 36, ROUT = 80;   // الجري: كل إطار يقطع 36 بكسل عند الدخول (ينتهي على إطار الملامسة 0)
 function runAt(x, steps, A, scl) {
   const n = frames.run.length; scl = scl || 1; const pos = ((Math.floor(steps) % n) + n) % n, lf = (SH.run.lift || [])[pos] ? 1 : 0;
   stepTick(Math.floor(steps / 1.5), A * scl);
   shadow(x, 100 * scl * (1 - .2 * lf), A * (1 - .35 * lf));
   blit('run', pos, x, scl, 0, A, { rot: 0 });
-  if (!lf && $('cSym') && $('cSym').checked && !greenOn()) {   // غبار خفيف عند ملامسة القدم
+  if (gOn() && !greenOn() && !lf) footFx(x, ((steps % 1) + 1) % 1, A, scl);
+  if (!lf && $('cSym') && $('cSym').checked && !greenOn() && dustOK()) {   // غبار خفيف عند ملامسة القدم
     const gc = groundCol(), age = (((steps % 1) + 1) % 1);
     ctx.save(); ctx.fillStyle = 'rgba(' + Math.min(255, gc[0] + 60) + ',' + Math.min(255, gc[1] + 55) + ',' + Math.min(255, gc[2] + 50) + ',' + (.4 * (1 - age) * A).toFixed(3) + ')';
     for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(x - (40 + k * 18 + age * 30) * scl, GROUND - (4 + k * 3 + age * 14) * scl, (5 + k * 3 + age * 12) * scl, 0, 7); ctx.fill(); }
@@ -207,11 +236,12 @@ function walkAt(x, steps, A, scl, dy0) {
   if ($('cSym') && $('cSym').checked && !greenOn()) {   // غبار عند لمس القدم للأرض + خطوط سرعة خلف الشخصية أثناء المشي
     const per = pp ? n - 1 : n / 2, age = (((steps % per) + per) % per) / per, gc = groundCol(), pc = 'rgba(' + Math.min(255, gc[0] + 60) + ',' + Math.min(255, gc[1] + 55) + ',' + Math.min(255, gc[2] + 50) + ',';
     ctx.save(); ctx.fillStyle = pc + (.45 * (1 - age) * A).toFixed(3) + ')';
-    for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(x - (30 + k * 16 + age * 34) * scl, GROUND - (4 + k * 3 + age * 16) * scl, (5 + k * 3 + age * 14) * scl, 0, 7); ctx.fill(); }
+    if (dustOK()) for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(x - (30 + k * 16 + age * 34) * scl, GROUND - (4 + k * 3 + age * 16) * scl, (5 + k * 3 + age * 14) * scl, 0, 7); ctx.fill(); }
     const q = Math.floor(clock * 12); ctx.strokeStyle = 'rgba(255,255,255,' + (.28 * A).toFixed(2) + ')'; ctx.lineWidth = 3 * scl; ctx.lineCap = 'round';
     for (let k = 0; k < 4; k++) { const yy = GROUND - (60 + rn(k, 7) * 230) * scl, len = (50 + rn(k + q, 3) * 70) * scl, xx = x - (70 + rn(k + q, 5) * 40) * scl; ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx - len, yy); ctx.stroke(); }
     ctx.restore();
   }
+  if (gOn() && !greenOn()) { const per = pp ? n - 1 : n / 2; footFx(x, (((steps % per) + per) % per) / per, A, scl); }
 }
 // عناصر أمامية: شريط من الخلفية نفسها (بحافة ناعمة) فوق القدمين ليبدو أنهما وسط العشب/الأوراق لا فوقها
 function drawFg(s, tt) {
@@ -298,7 +328,9 @@ function drawStand(s, m, X, A, noSh) {
   if (s.props && frames.point) for (const p of s.props) {   // تشير الشخصية إلى البطاقة لحظة ظهورها
     if (m >= p.f0 && m < p.f1 && (p.id.startsWith('bg') ? bgs[+p.id.slice(2) - 1] : props[p.id]) && (m - p.f0) * main < 2.6 && mode !== 'point') { mode = 'point'; st = p.f0; nx = Math.min(1, p.f0 + 2.6 / main); }
   }
-  const tm = m * main - st * main, left = (nx - m) * main; let name = pickSheet(mode), wLow = -1;
+  let tm = m * main - st * main, left = (nx - m) * main;
+  if (QWAIT && QPOSE && s === SHOTS[idx] && frames[QPOSE.mode]) { mode = QPOSE.mode; tm = clock - QPOSE.t0; left = 9; nx = 1; }   // أثناء السؤال الزمن متوقف، فنستعمل ساعة مستقلة
+  let name = pickSheet(mode), wLow = -1;
   // التلويح طبيعي: رفع اليد، ثم تلويحتان خفيفتان لمدة قصيرة، ثم تنزل اليد ويكمل الشرح بالإيماءات
   if (name === 'wave' && mode === 'wave' && tm > WAVE_HOLD) { if (tm < WAVE_HOLD + .8 && frames.wave.length > 8) wLow = 5 * (1 - ease((tm - WAVE_HOLD) / .8)); else { mode = 'talk'; name = pickSheet('talk'); } }
   if (!name) return;
@@ -372,6 +404,7 @@ function drawStand(s, m, X, A, noSh) {
   if (frames.joy && ['talk', 'point', 'think'].includes(name)) { if (!s._kw) s._kw = kwEvents(s);   // كلمات الفرح (رائع، مبروك…): نستبدل الإطار بقفزة الفرح
     for (const e of s._kw) { if (e.t !== 'jump') continue; const k = (m - e.f) * main; if (k >= 0 && k < e.d) { pn = 'joy'; i0 = i1 = k < .2 ? 2 : k < .7 ? 3 : 1; u = 0; o.sy = 1; o.sx = 1; o.dy = k >= .2 && k < .7 ? -Math.sin((k - .2) / .5 * Math.PI) * 26 : 0; } } }
   pair(pn, i0, i1, u, X, A, o);
+  if (gOn() && !greenOn()) standFx(X, A);
   if ($('cSym') && $('cSym').checked && !greenOn() && (name === 'awe' || name === 'think')) {   // رمز فوق الرأس: ! عند الدهشة، ؟ عند التفكير
     const fr = frames[name][i0], cfg = SH[name], sc = cfg.th * 0.96 / frames[name].ch * UI.size() * GSC, top = GROUND - (fr.bb.y1 - fr.bb.y0) * sc * 1.0;
     const st0 = name === 'awe' ? .12 : .6, ttm = tm - st0; if (ttm > 0 && (name === 'think' || ttm < 1.6)) {

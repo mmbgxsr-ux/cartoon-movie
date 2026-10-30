@@ -3,7 +3,7 @@
   const pick = s => JSON.parse(JSON.stringify({ h: s.h || '', bg: s.bg || 1, text: s.text || '', acts: s.acts || [[0, 'talk']], props: s.props || [], noWalk: !!s.noWalk, run: !!s.run, out: s.out, extra: s.extra, spk: s.spk, cast: s.cast, lines: s.lines, pos: s.pos, wear: s.wear, noFace: s.noFace, era: s.era, year: s.year, amb: s.amb, q: s.q, holo: s.holo }));
   let ED = SHOTS.map(pick);
   const el = (t, p, c) => { const e = document.createElement(t); if (p) Object.assign(e, p); (c || []).forEach(x => e.appendChild(x)); return e; };
-  const sel = (opts, val, fn) => { const s = el('select'); opts.forEach(([v, t]) => s.appendChild(el('option', { value: v, textContent: t }))); s.value = val; s.onchange = () => fn(s.value); return s; };
+  const sel = (opts, val, fn, lab) => { const s = el('select'); if (lab) s.title = lab; opts.forEach(([v, t]) => s.appendChild(el('option', { value: v, textContent: t }))); s.value = val; s.onchange = () => fn(s.value); return s; };
   const bgOpts = Array.from({ length: 15 }, (_, i) => [i + 1, (i + 1) + (typeof BG_SHORT !== 'undefined' && BG_SHORT[i + 1] ? '. ' + BG_SHORT[i + 1] : '')]);
   const NRE = /^\s*([^:：\n]{2,24}?)\s*[:：]\s*(.+)$/;
   const textToLines = s => { const parts = []; (s.text || '').split(/\n+/).map(x => x.trim()).filter(Boolean).forEach(L => { const m = NRE.exec(L), c = m && castByName(m[1]); if (c) parts.push({ spk: c.id, t: m[2].trim() }); else if (parts.length) parts[parts.length - 1].t += ' ' + L; else parts.push({ spk: s.spk || 'guide', t: L }); }); if (!parts.length) parts.push({ spk: s.spk || 'guide', t: '' }); return parts; };
@@ -20,19 +20,19 @@
         el('button', { type: 'button', textContent: '↑', onclick: mv(-1), style: 'padding:4px 10px' }), el('button', { type: 'button', textContent: '↓', onclick: mv(1), style: 'padding:4px 10px' }),
         el('button', { type: 'button', textContent: '✕', style: 'padding:4px 10px;background:#5a3a3a', onclick() { if (ED.length > 1) { ED.splice(i, 1); render(); } } })]);
       const propSel = sel([['', 'بدون بطاقة'], ...PROPS, ...(multi ? [['*', 'عدة بطاقات (محفوظة)']] : [])], multi ? '*' : (p0 ? p0.id : ''), v => {
-        if (v === '*') return; s.props = v ? [{ id: v, cap: p0 ? p0.cap : '', f0: 0, f1: 1 }] : []; render(); });
+        if (v === '*') return; s.props = v ? [{ id: v, cap: p0 ? p0.cap : '', f0: 0, f1: 1 }] : []; render(); }, 'البطاقة');
       const cap = el('input', { value: p0 ? p0.cap || '' : '', placeholder: 'شرح البطاقة', disabled: !p0 || multi, style: 'flex:1;min-width:100px;background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px', oninput() { if (s.props[0]) s.props[0].cap = this.value; } });
-      const opts = el('div', { className: 'row' }, [sel(bgOpts, s.bg, v => { s.bg = +v; }),
-        sel(ACT, (s.acts[0] && s.acts[0][1]) || 'talk', v => { s.acts = v === 'talk' ? [[0, 'talk']] : [[0, v], [0.6, 'talk']]; }),
-        sel([['', 'خروج: مشي'], ['away', 'خروج: بالظهر'], ['turnaway', 'خروج: التفات ثم بالظهر']], s.out || '', v => { s.out = v || undefined; }),
-        sel([['walk', 'دخول: مشي'], ['run', 'دخول: جري'], ['none', 'بدون دخول']], s.noWalk ? 'none' : (s.run ? 'run' : 'walk'), v => { s.noWalk = v === 'none'; s.run = v === 'run'; }), propSel, cap, el('label', { style: 'white-space:nowrap' }, [el('input', { type: 'checkbox', checked: !!s.holo, onchange() { s.holo = this.checked || undefined; } }), el('span', { textContent: ' هولجرام' })])]);
+      const opts = el('div', { className: 'row' }, [sel(bgOpts, s.bg, v => { s.bg = +v; }, 'خلفية المشهد'),
+        sel(ACT, (s.acts[0] && s.acts[0][1]) || 'talk', v => { s.acts = v === 'talk' ? [[0, 'talk']] : [[0, v], [0.6, 'talk']]; }, 'إيماءة المشهد'),
+        sel([['', 'خروج: مشي'], ['away', 'خروج: بالظهر'], ['turnaway', 'خروج: التفات ثم بالظهر']], s.out || '', v => { s.out = v || undefined; }, 'طريقة الخروج'),
+        sel([['walk', 'دخول: مشي'], ['run', 'دخول: جري'], ['none', 'بدون دخول']], s.noWalk ? 'none' : (s.run ? 'run' : 'walk'), v => { s.noWalk = v === 'none'; s.run = v === 'run'; }, 'طريقة الدخول'), propSel, cap, el('label', { style: 'white-space:nowrap' }, [el('input', { type: 'checkbox', checked: !!s.holo, onchange() { s.holo = this.checked || undefined; } }), el('span', { textContent: ' هولجرام' })])]);
       const eraRow = el('div', { className: 'row' }, [el('span', { textContent: 'شريط العصر' }),
         el('input', { value: s.era || '', placeholder: 'العصر', style: 'background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px;width:150px', oninput() { s.era = this.value.trim() || undefined; } }),
         el('input', { value: s.year || '', placeholder: 'السنة', style: 'background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px;width:100px', oninput() { s.year = this.value.trim() || undefined; } }),
-        el('span', { textContent: 'صوت المكان' }), sel([['', 'حسب الخلفية'], ...(typeof AMB_OPTS !== 'undefined' ? AMB_OPTS : [])], s.amb || '', v => { s.amb = v || undefined; })]);
+        el('span', { textContent: 'صوت المكان' }), sel([['', 'حسب الخلفية'], ...(typeof AMB_OPTS !== 'undefined' ? AMB_OPTS : [])], s.amb || '', v => { s.amb = v || undefined; }, 'صوت المكان')]);
       const cur = () => (s.cast && s.cast.length ? s.cast.slice() : ['guide']);
       const castRow = el('div', { className: 'row' }, [el('span', { textContent: 'المتحدث' }),
-        sel(CAST.map(c => [c.id, c.name]), s.spk || 'guide', v => { const a = cur(); if (!a.includes(v)) a.push(v); s.spk = v === 'guide' ? undefined : v; s.cast = a.length === 1 && a[0] === 'guide' ? undefined : a; render(); }),
+        sel(CAST.map(c => [c.id, c.name]), s.spk || 'guide', v => { const a = cur(); if (!a.includes(v)) a.push(v); s.spk = v === 'guide' ? undefined : v; s.cast = a.length === 1 && a[0] === 'guide' ? undefined : a; render(); }, 'المتحدث'),
         el('span', { textContent: 'الحاضرون' }),
         ...CAST.map(c => el('label', { style: 'font-size:13px' }, [el('input', { type: 'checkbox', checked: cur().includes(c.id), onchange() { let a = cur(); if (this.checked) a.push(c.id); else a = a.filter(x => x !== c.id); a = [...new Set(a)]; if (!a.length) a = ['guide']; s.cast = a.length === 1 && a[0] === 'guide' ? undefined : a; if (s.spk && !a.includes(s.spk)) s.spk = a[0] === 'guide' ? undefined : a[0]; render(); } }), document.createTextNode(c.name)]))]);
       const ta = el('textarea', { value: s.text, rows: 3, placeholder: 'نص المشهد (يُقرأ بالتعليق، وطوله يحدد المدة)', style: 'width:100%;background:#26313b;color:#eee;border:0;border-radius:6px;padding:8px;font:inherit', oninput() { s.text = this.value; } });
@@ -42,8 +42,8 @@
         const items = [el('span', { textContent: 'المواضع والأزياء', style: 'width:100%;font-size:12px;color:#8ea0b5' })];
         present.forEach(id => {
           const c = castById(id), g = [el('b', { textContent: c.name, style: 'font-size:13px;color:#cfd8e3' })];
-          g.push(sel(CAST_POS_OPTS, (s.pos && s.pos[id]) || '', v => { s.pos = Object.assign({}, s.pos); if (v) s.pos[id] = v; else delete s.pos[id]; if (!Object.keys(s.pos).length) s.pos = undefined; render(); }));
-          if (c.alt && c.alt.length) g.push(sel([['', 'الزي الأساسي'], ...c.alt.map((a, k) => [String(k), a.name || ('زي ' + (k + 1))])], s.wear && s.wear[id] != null ? String(s.wear[id]) : '', v => { s.wear = Object.assign({}, s.wear); if (v === '') delete s.wear[id]; else s.wear[id] = +v; if (!Object.keys(s.wear).length) s.wear = undefined; }));
+          g.push(sel(CAST_POS_OPTS, (s.pos && s.pos[id]) || '', v => { s.pos = Object.assign({}, s.pos); if (v) s.pos[id] = v; else delete s.pos[id]; if (!Object.keys(s.pos).length) s.pos = undefined; render(); }, 'موضع الشخصية'));
+          if (c.alt && c.alt.length) g.push(sel([['', 'الزي الأساسي'], ...c.alt.map((a, k) => [String(k), a.name || ('زي ' + (k + 1))])], s.wear && s.wear[id] != null ? String(s.wear[id]) : '', v => { s.wear = Object.assign({}, s.wear); if (v === '') delete s.wear[id]; else s.wear[id] = +v; if (!Object.keys(s.wear).length) s.wear = undefined; }, 'زي الشخصية'));
           items.push(el('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#1b2635;border-radius:8px;padding:4px 8px' }, g));
         });
         if (present.length > 1) items.push(el('label', { style: 'font-size:13px' }, [el('input', { type: 'checkbox', checked: !!s.noFace, onchange() { s.noFace = this.checked || undefined; } }), document.createTextNode('بدون التفات (ثبات الاتجاه)')]));
@@ -59,7 +59,7 @@
         const mvL = (k, d) => () => { const j = k + d; if (j < 0 || j >= s.lines.length) return; [s.lines[k], s.lines[j]] = [s.lines[j], s.lines[k]]; syncLines(s); render(); };
         s.lines.forEach((L, k) => linesBox.appendChild(el('div', { className: 'row', style: 'align-items:flex-start;margin:0 0 6px' }, [
           el('b', { textContent: (k + 1) + '.', style: 'padding-top:6px' }),
-          sel(CAST.map(c => [c.id, c.name]), L.spk, v => { L.spk = v; syncLines(s); render(); }),
+          sel(CAST.map(c => [c.id, c.name]), L.spk, v => { L.spk = v; syncLines(s); render(); }, 'المتحدث في السطر'),
           el('textarea', { value: L.t, rows: 2, placeholder: 'ماذا يقول؟', style: inp2 + ';flex:1;min-width:140px;font:inherit', oninput() { L.t = this.value; syncLines(s); } }),
           el('button', { type: 'button', textContent: '↑', onclick: mvL(k, -1), style: 'padding:4px 9px' }), el('button', { type: 'button', textContent: '↓', onclick: mvL(k, 1), style: 'padding:4px 9px' }),
           el('button', { type: 'button', textContent: '✕', style: 'padding:4px 9px;background:#5a3a3a', onclick() { s.lines.splice(k, 1); if (!s.lines.length) s.lines = undefined; else syncLines(s); render(); } })])));
