@@ -142,12 +142,21 @@ drawChar = function (s, tt) {
   const m = Math.min(.999, Math.max(0, mOf(s, tt)));
   const face = !s.noFace && list.length > 1, flipFor = (id, fx, tx) => face && Math.sign(tx - fx) * faceDir(castById(id)) < 0;
   const others = list.map((id, i) => xs[i]).filter((x, i) => list[i] !== spk), near = others.length ? others.reduce((a, b) => Math.abs(b - sx) < Math.abs(a - sx) ? b : a) : sx;
+  // الاستماع الحي: عند نهاية عبارة المتكلم أو نبرته القوية يومئ مستمع واحد (بالتناوب) بعد تأخر طبيعي ~0.2 ثانية
+  const lis = list.filter(id => id !== spk); let nodWho = null, nod = 0;
+  if (lis.length && LIFE()) {
+    let EVs = null; try { EVs = envOf(s); } catch (_) {} const pos = EVs ? audioPos(s) : -1, evOn = EVs && pos >= 0 && pos <= EVs.dur;
+    const cnt = evOn ? evCount(EVs, pos) : chunkAt(s, m);
+    if (s._lk == null || s._lsp !== spk) { s._lk = cnt; s._lsp = spk; s._lt = -9; s._lw = 0; }
+    else if (cnt !== s._lk) { s._lk = cnt; s._lt = clock; s._lw = (s._lw || 0) + 1; }
+    const u = (clock - s._lt - .22) / .55; if (u >= 0 && u <= 1) { nod = Math.sin(u * Math.PI); nodWho = lis[s._lw % lis.length]; }
+  }
   list.forEach((id, i) => {
     if (id === spk) return; const c = wearOf(s, id);
     withCast(c, () => {
       const fr = frames.talk; if (!fr) return; const sv = { open: M.open, wide: M.wide, round: M.round, act: M.act }; M.open = M.wide = M.round = M.act = 0;
       const br = Math.sin(clock * 2.1 + i * 1.7);
-      blit('talk', 15 % fr.length, xs[i], c.scale || 1, 0, 1, { flip: flipFor(id, xs[i], sx), sy: 1 + .008 * br, sx: 1 - .004 * br, rot: (sx > xs[i] ? 1 : -1) * .01 + Math.sin(clock * .8 + i) * .003, dx: Math.sin(clock * .55 + i * 2) * 2.4, mouth: 1 });
+      blit('talk', 15 % fr.length, xs[i], c.scale || 1, 0, 1, { flip: flipFor(id, xs[i], sx), sy: 1 + .008 * br - (id === nodWho ? .012 * nod : 0), sx: 1 - .004 * br, rot: (sx > xs[i] ? 1 : -1) * (.01 + (id === nodWho ? .03 * nod : 0)) + Math.sin(clock * .8 + i) * .003, dx: Math.sin(clock * .55 + i * 2) * 2.4, dy: id === nodWho ? 3 * nod : 0, mouth: 1 });
       Object.assign(M, sv);
     });
   });
