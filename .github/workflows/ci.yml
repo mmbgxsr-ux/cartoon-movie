@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 jobs:
@@ -29,7 +28,27 @@ jobs:
         run: git diff --exit-code -- index.html
 
       - name: Run tests
-        run: python -m pytest tests -v
+        run: python -m pytest tests -v --tb=short --junitxml=report.xml
+
+      - name: Report test failures as annotations
+        if: failure()
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          try:
+              root = ET.parse('report.xml').getroot()
+          except Exception as e:
+              print('::error title=no junit report::%s' % e); raise SystemExit
+          n = 0
+          for tc in root.iter('testcase'):
+              for kind in ('failure', 'error'):
+                  el = tc.find(kind)
+                  if el is not None and n < 9:
+                      n += 1
+                      msg = (el.get('message') or '') + '\n' + (el.text or '')
+                      msg = msg[-1200:].replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+                      print('::error title=%s::%s' % (tc.get('name'), msg))
+          PY
 
       - name: Upload single-file build
         uses: actions/upload-artifact@v4
