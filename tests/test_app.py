@@ -555,3 +555,37 @@ def test_live_regions_canvas_labels_and_boot_indicator(page):
     assert page.locator("#boot").count() == 0   # يُزال بعد اكتمال التحميل
     assert page.locator("a.skip").count() == 1
 
+
+
+def test_beforeunload_guards_only_while_exporting(page):
+    fire = "(() => { const e = new Event('beforeunload', { cancelable: true }); dispatchEvent(e); return e.defaultPrevented; })()"
+    assert page.evaluate(fire) is False          # الاستخدام العادي: لا نزعج المستخدم
+    page.evaluate("EXPORTING = true")
+    try:
+        assert page.evaluate(fire) is True       # أثناء التصدير: يظهر تأكيد المتصفح
+    finally:
+        page.evaluate("EXPORTING = false")
+    assert page.evaluate(fire) is False
+
+
+def test_runtime_error_during_playback_resets_state(page):
+    page.evaluate("playing = true; $('bPlay').textContent = 'إيقاف'")
+    page.evaluate("dispatchEvent(new ErrorEvent('error', { message: 'boom', error: new Error('boom') }))")
+    assert page.evaluate("playing") is False
+    assert page.evaluate("$('bPlay').textContent") == "تشغيل"
+    assert "boom" in page.evaluate("document.getElementById('msg').textContent")
+
+
+def test_runtime_error_during_export_requests_cancel(page):
+    page.evaluate("EXPORTING = true; EXP_CANCEL = false")
+    try:
+        page.evaluate("dispatchEvent(new ErrorEvent('error', { message: 'boom' }))")
+        assert page.evaluate("EXP_CANCEL") is True
+    finally:
+        page.evaluate("EXPORTING = false; EXP_CANCEL = false")
+
+
+def test_error_while_idle_is_ignored(page):
+    page.evaluate("dispatchEvent(new ErrorEvent('error', { message: 'boom' }))")
+    assert "boom" not in page.evaluate("document.getElementById('msg').textContent")
+    assert page.evaluate("playing") is False and page.evaluate("EXP_CANCEL") is False

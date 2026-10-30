@@ -223,7 +223,8 @@ function tickSim(dt) {
 let IDLE_LAST = 0, IDLE_BOOST = 0;
 ['input', 'change', 'pointerdown', 'pointerup', 'keydown', 'resize'].forEach(e => addEventListener(e, () => { IDLE_BOOST = performance.now() + 1500; }, true));
 function loop(now) {
-  if (!playing && !EXPORTING && !QWAIT && !PERF.full && now - IDLE_LAST < (now < IDLE_BOOST ? 45 : 450)) { requestAnimationFrame(loop); return; }
+  requestAnimationFrame(loop);   // أولًا: لو رمى tickSim استثناءً تبقى حلقة الرسم حيّة بدل أن تموت للأبد
+  if (!playing && !EXPORTING && !QWAIT && !PERF.full && now - IDLE_LAST < (now < IDLE_BOOST ? 45 : 450)) return;
   IDLE_LAST = now;
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   if (!EXPORTING) {
@@ -231,6 +232,5 @@ function loop(now) {
     tickSim(dt);
     if (pm) PERF.add(performance.now() - pm, dt);
   }
-  requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
