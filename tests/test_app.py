@@ -329,7 +329,8 @@ def test_full_package_roundtrip_on_fresh_browser(browser, base_url, page, tmp_pa
 def test_package_is_applied_only_once(page, tmp_path):
     pkg = _make_package(page, tmp_path)
     page.set_input_files("#fPrj", str(pkg))
-    page.wait_for_function("window.CMPack && CMPack.ready && bgs.length === 2", timeout=60000)
+    # ننتظر رسالة الاستعادة (تظهر بعد إعادة التحميل). شرط bgs.length وحده يتحقق في الصفحة القديمة قبل إعادة التحميل.
+    page.wait_for_function("window.CMPack && CMPack.ready && document.getElementById('msg').textContent.includes('تم استرجاع الحزمة') && bgs.length === 2", timeout=60000)
     page.evaluate("bgs.length = 0")          # نفرّغ ثم نعيد التحميل: لا يجب أن تُعاد الخلفيات من حزمة معلّقة قديمة
     page.reload()
     page.wait_for_function("window.CMPack && CMPack.ready", timeout=20000)
