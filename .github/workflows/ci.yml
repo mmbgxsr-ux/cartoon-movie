@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r tests/requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Build
+        run: python build.py --no-min
+
+      - name: Check index.html is up to date
+        run: git diff --exit-code -- index.html
+
+      - name: Run tests
+        run: python -m pytest tests -v
+
+      - name: Upload single-file build
+        uses: actions/upload-artifact@v4
+        with:
+          name: cartoon-movie-dist
+          path: dist/*.html
