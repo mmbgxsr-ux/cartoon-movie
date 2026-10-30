@@ -589,3 +589,25 @@ def test_error_while_idle_is_ignored(page):
     page.evaluate("dispatchEvent(new ErrorEvent('error', { message: 'boom' }))")
     assert "boom" not in page.evaluate("document.getElementById('msg').textContent")
     assert page.evaluate("playing") is False and page.evaluate("EXP_CANCEL") is False
+
+
+HIDE = "Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange'))"
+
+
+def test_hiding_tab_stops_playback_at_current_scene(page):
+    page.evaluate("playing = true; idx = 0")
+    page.evaluate(HIDE)
+    assert page.evaluate("playing") is False
+    assert page.evaluate("$('sStart').value") == "0"        # يُستأنف من المشهد الذي توقف عنده
+    assert "المشهد 1" in page.evaluate("document.getElementById('msg').textContent")
+
+
+def test_hiding_tab_does_not_touch_idle_or_export(page):
+    page.evaluate(HIDE)                                       # خامل: لا شيء يحدث
+    assert page.evaluate("playing") is False
+    page.evaluate("playing = true; EXPORTING = true")
+    try:
+        page.evaluate(HIDE)
+        assert page.evaluate("playing") is True               # التصدير لا يُقطع بإخفاء التبويب
+    finally:
+        page.evaluate("playing = false; EXPORTING = false")
