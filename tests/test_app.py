@@ -94,7 +94,9 @@ def test_opens_without_errors(page):
 
 def test_single_file_build_opens(browser):
     """نسخة الملف الواحد في dist تعمل أيضًا (file://)."""
-    dist = next((ROOT / "dist").glob("cartoon_movie_v*.html"))
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    dist = ROOT / "dist" / ("cartoon_movie_%s.html" % version)
+    assert dist.exists(), "شغّل python build.py أولًا: %s" % dist.name
     ctx = browser.new_context()
     pg = ctx.new_page()
     errs = []
@@ -472,3 +474,74 @@ def test_listener_nods_on_speaker_phrase_end(page):
     assert abs(rots["peak"]) > abs(rots["base"]) + 0.02, rots
     assert abs(rots["after"] - rots["base"]) < 0.01, rots
     assert page.errors == []
+
+
+def test_scene_title_html_is_not_executed(page):
+    """عنوان مشهد خبيث (من درس مستورد) يجب أن يظهر نصًا ولا يُنفَّذ."""
+    evil = [{"h": "<img src=x onerror=\"window.__xss=1\">", "bg": 1, "text": "نص تجريبي للمشهد", "acts": [[0, "talk"]]}]
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(evil)))
+    reload(page)
+    page.wait_for_timeout(500)
+    assert page.evaluate("window.__xss") is None
+    assert page.locator("#idxList img, #map img").count() == 0
+    assert "onerror" in page.locator("#idxList").inner_text()
+
+
+def test_delete_key_button_clears_key(page):
+    open_tab(page, "#kDel")
+    page.evaluate("document.getElementById('kKey').value = 'x'.repeat(20); document.getElementById('kKey').dispatchEvent(new Event('input'))")
+    assert page.evaluate("localStorage.getItem('gk')") is not None
+    page.click("#kDel")
+    assert page.evaluate("document.getElementById('kKey').value") == ""
+    assert page.evaluate("localStorage.getItem('gk')") is None
+
+
+# ---------- 3) تناسق الإصدار والبناء ----------
+def test_version_is_consistent():
+    """VERSION يطابق عنوان index.html واسم ملف dist، وكل ملفات files.json موجودة."""
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    assert version.startswith("v")
+    index = (ROOT / "index.html").read_text(encoding="utf-8")
+    assert "صانع الأفلام الكرتونية " + version in index, "index.html قديم: شغّل python build.py"
+    assert (ROOT / "dist" / ("cartoon_movie_%s.html" % version)).exists()
+    missing = [f for f in json.loads((ROOT / "files.json").read_text(encoding="utf-8")) if not (ROOT / f).exists()]
+    assert missing == []
+
+
+# ---------- 4) إمكانية الوصول ----------
+_UNNAMED = """() => [...document.querySelectorAll('input:not([type=hidden]),select,textarea')].filter(el => !(
+    el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.title || el.closest('label') ||
+    (el.id && document.querySelector('label[for="' + el.id + '"]')))).map(el => el.outerHTML.slice(0, 120))"""
+
+
+def test_tabs_are_accessible_and_keyboard_navigable(page):
+    assert page.get_attribute("#tabs", "role") == "tablist"
+    n = page.evaluate("document.querySelectorAll('#tabs [role=tab]').length")
+    assert n >= 5
+    assert page.evaluate("document.querySelectorAll('#tabs [aria-selected=true]').length") == 1
+    assert page.evaluate("[...document.querySelectorAll('#tabs [role=tab]')].every(t => document.getElementById(t.getAttribute('aria-controls')).getAttribute('aria-labelledby') === t.id)")
+    page.evaluate("document.querySelector('#tabs [aria-selected=true]').focus()")
+    before = page.evaluate("[...document.getElementById('tabs').children].findIndex(t => t.getAttribute('aria-selected') === 'true')")
+    page.keyboard.press("ArrowLeft")   # الواجهة RTL: السهم الأيسر = القسم التالي
+    after = page.evaluate("[...document.getElementById('tabs').children].findIndex(t => t.getAttribute('aria-selected') === 'true')")
+    assert after == (before + 1) % n
+    page.keyboard.press("Home")
+    assert page.evaluate("document.getElementById('tabs').children[0].getAttribute('aria-selected')") == "true"
+
+
+def test_all_form_controls_have_accessible_names(page):
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(SCENES)))
+    reload(page)
+    for i in range(page.evaluate("document.getElementById('tabs').children.length")):
+        page.evaluate("i => document.getElementById('tabs').children[i].click()", i)
+        page.wait_for_timeout(100)
+    page.wait_for_timeout(500)   # المراقب في js/a11y.js يعمل بتأخير قصير
+    assert page.evaluate(_UNNAMED) == []
+
+
+def test_live_regions_canvas_labels_and_boot_indicator(page):
+    assert page.get_attribute("#msg", "aria-live") == "polite"
+    assert page.get_attribute("#c", "aria-label")
+    assert page.locator("#boot").count() == 0   # يُزال بعد اكتمال التحميل
+    assert page.locator("a.skip").count() == 1
+
