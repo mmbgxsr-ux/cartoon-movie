@@ -23,9 +23,10 @@ def minify_js(code):
 # 1) نسخة المجلد (تعمل بفتح index.html مباشرة)
 loader = ("<script src=\"js/storage.js\"></script>\n<script>\nconst FILES=%s;\n"
           "Store.init().then(()=>{FILES.forEach(f=>{const s=document.createElement('script');s.src=f;s.async=false;"
-          "s.onerror=()=>{document.getElementById('msg').textContent='تعذّر تحميل '+f};document.body.appendChild(s);});});\n"
+          "s.onerror=()=>{document.getElementById('msg').textContent='تعذّر تحميل '+f;const b=document.getElementById('boot');if(b)b.remove();};document.body.appendChild(s);});});\n"
           "</script>\n</body></html>\n") % json.dumps(files)
-open('index.html', 'w', encoding='utf-8').write(body + loader)
+GEN = '<!-- ملف مولَّد من build.py (index_body.html + files.json). لا تعدّله يدويًا، عدّل المصدر ثم شغّل: python build.py -->\n'
+open('index.html', 'w', encoding='utf-8').write(body.replace('<!doctype html>\n', '<!doctype html>\n' + GEN, 1) + loader)
 
 # 2) نسخة ملف واحد
 css = rd('css/styles.css')
