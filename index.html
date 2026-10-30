@@ -10,7 +10,8 @@
 <header id="topBar"><div class="brand"><i>🎬</i><div>استوديو الفيلم الكرتوني<small>صانع أفلام تعليمية متحركة</small></div></div><span id="infoTop"></span><button id="bPlayTop" type="button">تشغيل</button></header>
 <main class="app"><section class="stage"><canvas id="c" width="1280" height="720"></canvas>
 <div id="bar"><div id="prog"></div></div>
-<div class="row"><span id="info">جاهز</span></div></section><section class="panel"><nav id="tabs"></nav>
+<div class="row"><span id="info">جاهز</span></div>
+<details id="dTl" class="tlBox"><summary>⏱ المخطط الزمني للمشهد (الصوت والإيماءات)</summary><canvas id="tl" width="900" height="210"></canvas><div id="tlNote" class="tlNote"></div></details></section><section class="panel"><nav id="tabs"></nav>
 
 <div class="box">
   <h3>1) الخلفيات (ارفع الصور الـ 15 دفعة واحدة)</h3>
@@ -138,7 +139,7 @@
 
 <script src="js/storage.js"></script>
 <script>
-const FILES=["js/core.js", "js/safety.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/export.js", "js/settings.js", "assets/shimg.js", "js/framecache.js", "js/backgrounds.js", "js/cast.js", "js/hologram.js", "js/decision.js", "js/perf.js", "js/topplay.js", "js/project.js", "js/package.js", "js/editor.js", "js/worlds.js", "js/packs.js", "js/tabs.js"];
+const FILES=["js/core.js", "js/safety.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/export.js", "js/settings.js", "assets/shimg.js", "js/framecache.js", "js/backgrounds.js", "js/cast.js", "js/hologram.js", "js/decision.js", "js/perf.js", "js/timeline.js", "js/topplay.js", "js/project.js", "js/package.js", "js/editor.js", "js/worlds.js", "js/packs.js", "js/tabs.js"];
 Store.init().then(()=>{FILES.forEach(f=>{const s=document.createElement('script');s.src=f;s.async=false;s.onerror=()=>{document.getElementById('msg').textContent='تعذّر تحميل '+f};document.body.appendChild(s);});});
 </script>
 </body></html>
