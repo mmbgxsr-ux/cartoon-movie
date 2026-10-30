@@ -449,3 +449,26 @@ def test_timeline_shows_audio_acts_and_props(page, tmp_path):
     assert px[2] > 500, "غلاف الصوت غير مرسوم"
     assert page.evaluate("analyzeAudio(AB(SHOTS[0])).ev.length") >= 1, "يجب أن تُكتشف حدود عبارات من الوقفات"
     assert page.errors == []
+
+
+# ---------- المستمع يومئ في مشاهد الحوار ----------
+def test_listener_nods_on_speaker_phrase_end(page):
+    page.evaluate("CAST.push({id: 't1', name: 'ت', top: '#336699', bottom: '#222222', acc: '', accColor: '#ffffff', scale: 1, voice: ''})")
+    scenes = [dict(SCENES[0], text="جملة أولى. جملة ثانية.", noWalk=True, spk="guide", cast=["guide", "t1"], acts=[[0, "talk"]])]
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    page.evaluate("CAST.push({id: 't1', name: 'ت', top: '#336699', bottom: '#222222', acc: '', accColor: '#ffffff', scale: 1, voice: ''})")
+    page.wait_for_function("Object.keys(SH).every(n => !SHIMG[n] || frames[n])", timeout=120000)
+    rots = page.evaluate("""() => {
+        const out = [], ob = blit; blit = function (n, i, x, sc, dy, al, o) { if (n === 'talk' && o && o.mouth === 1 && o.dy !== undefined) out.push(o.rot); return ob.apply(this, arguments); };
+        const s = SHOTS[0]; idx = 0; s._lk = null; let pos = 0.5, tt = 3;
+        s.inT = .3; s.outT = .3; s.dur = 6; const cum = new Float32Array(501).map((_, k) => k); envOf = () => ({ ev: [1.0, 2.0], dur: 5, n: 500, cum, tot: 500 }); audioPos = () => pos;
+        const rot = () => { out.length = 0; drawChar(s, tt); return out[0]; };
+        const base = rot();            // قبل أي حدث: الميل الثابت فقط
+        pos = 1.5; const c0 = clock; clock = c0; rot();    // مرّت نهاية العبارة الأولى: يبدأ العدّ
+        clock = c0 + .22 + .27; const peak = rot();       // ذروة الإيماءة
+        clock = c0 + 1.5; const after = rot();            // انتهت الإيماءة
+        blit = ob; return { base, peak, after }; }""")
+    assert abs(rots["peak"]) > abs(rots["base"]) + 0.02, rots
+    assert abs(rots["after"] - rots["base"]) < 0.01, rots
+    assert page.errors == []
