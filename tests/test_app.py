@@ -143,6 +143,15 @@ def test_invalid_project_file_is_rejected(page, tmp_path):
     assert page.evaluate("SHOTS.length") >= 1  # لم تُمسح بيانات المستخدم
 
 
+def test_project_with_corrupt_values_does_not_replace_current_data(page, tmp_path):
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(SCENES)))
+    bad = tmp_path / "corrupt.json"
+    bad.write_text(json.dumps({"app": "cartoon-movie", "v": 1, "data": {"cartoonScenes1": "{ not json"}}), encoding="utf-8")
+    page.set_input_files("#fPrj", str(bad))
+    page.wait_for_function("document.getElementById('msg').textContent.includes('تعذّر فتح المشروع')", timeout=5000)
+    assert page.evaluate("Store.getItem('cartoonScenes1')") == json.dumps(SCENES)  # المشروع الحالي كما هو
+
+
 def test_partial_project_keeps_other_data(page, tmp_path):
     page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(SCENES)))
     partial = tmp_path / "partial.json"

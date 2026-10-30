@@ -345,7 +345,10 @@ for (const n of Object.keys(SH)) {
   }, true);
   if (SH[n].g) {
     const row = document.createElement('div'); row.className = 'shot';
-    row.innerHTML = '<span>' + SH[n].label + '</span><span>أعمدة <input type="number" id="gc_' + n + '" value="' + SH[n].g[0] + '" min="1" max="12" style="width:56px"> صفوف <input type="number" id="gr_' + n + '" value="' + SH[n].g[1] + '" min="1" max="12" style="width:56px"></span>';
+    const num = (id, v) => { const x = document.createElement('input'); x.type = 'number'; x.id = id; x.value = v; x.min = 1; x.max = 12; x.style.width = '56px'; return x; };
+    const lab = document.createElement('span'); lab.textContent = SH[n].label;
+    const ctl = document.createElement('span'); ctl.append('أعمدة ', num('gc_' + n, SH[n].g[0]), ' صفوف ', num('gr_' + n, SH[n].g[1]));
+    row.append(lab, ctl);
     $('grids').appendChild(row);
     const apply = () => { const c = Math.max(1, +$('gc_' + n).value || 1), r = Math.max(1, +$('gr_' + n).value || 1); SH[n].cols = c; SH[n].rows = eq(r); if (imgs[n]) build(n); };
     $('gc_' + n).onchange = apply; $('gr_' + n).onchange = apply;
