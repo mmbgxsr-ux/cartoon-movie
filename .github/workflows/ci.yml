@@ -8,6 +8,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]            # الاختبارات تُوزَّع على 3 مهام متوازية (tests/conftest.py)
+    env:
+      TEST_SHARDS: 3
+      TEST_SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +59,7 @@ jobs:
           PY
 
       - name: Upload single-file build
+        if: matrix.shard == 0
         uses: actions/upload-artifact@v4
         with:
           name: cartoon-movie-dist
