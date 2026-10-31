@@ -686,3 +686,74 @@ def test_default_sheet_mouths_sit_on_lips_with_realistic_width(page):
     assert sum(1 for u in s["up"] if 0.002 <= u <= 0.026) >= s["n"] - 2   # الفم أعلى من التقدير الأولي (يهبط على خط الشفتين لا على الشفة السفلى)
     assert sum(1 for r in s["r"] if abs(r) >= 1) >= s["n"] // 2       # الميل يُقاس لا يُترك صفرًا
     assert all(abs(r) <= 22 for r in s["r"])
+
+
+def test_generate_audio_stops_after_test_export_window(page):
+    """genAll(maxSec) لا يولّد صوت ما بعد الثواني المطلوبة، فلا يستدعي التصدير التجريبي Gemini لكل الفيلم."""
+    scenes = [dict(SCENES[0], h="مشهد %d" % i, text="نص المشهد رقم %d للاختبار" % i) for i in range(4)]
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    page.evaluate("""() => {
+        $('kKey').value = 'AIza' + 'x'.repeat(20); $('cTts').checked = true; if ($('cEmb')) $('cEmb').checked = false;
+        window.__gen = [];
+        window.gen = async s => { window.__gen.push(s.h); s.abuf = { duration: 4, length: 96000, sampleRate: 24000, numberOfChannels: 1 }; s.adur = 4; };
+    }""")
+    assert page.evaluate("SHOTS.length") == 4
+    page.evaluate("genAll(5)")
+    page.wait_for_function("window.__gen.length >= 1", timeout=20000)
+    page.wait_for_timeout(1500)
+    assert page.evaluate("window.__gen.length") == 1                  # مشهد واحد يكفي لتغطية 5 ثوانٍ
+    page.evaluate("window.__gen = []; SHOTS.forEach(s => { s.abuf = null; s.gk = null; })")
+    page.evaluate("genAll()")                                         # بلا حدّ: كل المشاهد كما كان
+    page.wait_for_function("window.__gen.length === 4", timeout=30000)
+
+
+def test_test_export_makes_short_preview_without_downloading(page, tmp_path):
+    supported = page.evaluate("""async () => {
+        if (!window.VideoEncoder || !window.AudioEncoder) return false;
+        for (const c of ['avc1.640028', 'avc1.4d0028', 'avc1.42001f']) {
+            try { const r = await VideoEncoder.isConfigSupported({ codec: c, width: 1280, height: 720, bitrate: 1e6, framerate: 30, avc: { format: 'avc' } }); if (r.supported) return true; } catch (_) {}
+        }
+        return false;
+    }""")
+    if not supported:
+        pytest.skip("المتصفح لا يدعم ترميز H.264 (Chromium بدون ترميزات مغلقة)")
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps([dict(SCENES[0], text="نص قصير")])))
+    reload(page)
+    (tmp_path / "bg.png").write_bytes(_png(640, 360))
+    page.set_input_files("#fBg", str(tmp_path / "bg.png"))
+    page.wait_for_function("bgs.length === 1", timeout=10000)
+    (tmp_path / "01.wav").write_bytes(_wav(9.0))                      # أطول من نافذة التجربة
+    page.set_input_files("#fAud", str(tmp_path / "01.wav"))
+    page.wait_for_function("SHOTS[0].eb", timeout=10000)
+    open_tab(page, "#bExpTest")
+    downloads = []
+    page.on("download", lambda d: downloads.append(d))
+    page.click("#bExpTest")
+    page.wait_for_function("document.getElementById('msg').textContent.startsWith('تم التصدير') || document.getElementById('msg').textContent.startsWith('تعذّر')", timeout=240000)
+    msg = page.evaluate("document.getElementById('msg').textContent")
+    assert msg.startswith("تم التصدير التجريبي"), msg
+    assert page.evaluate("document.getElementById('expPrev').hidden") is False
+    assert page.evaluate("document.getElementById('dl').download") == "preview.mp4"
+    assert downloads == []                                            # المعاينة تظهر في الصفحة ولا تبدأ تحميلًا
+    dur = page.evaluate("""fetch(document.getElementById('expPrev').src).then(r => r.arrayBuffer()).then(b => {
+        const u = new Uint8Array(b); for (let p = 4; p < u.length - 24; p++) if (u[p] === 109 && u[p + 1] === 118 && u[p + 2] === 104 && u[p + 3] === 100) {
+            const v = new DataView(b); return v.getUint32(p + 16) ? v.getUint32(p + 20) / v.getUint32(p + 16) : -1; } return -2; })""")
+    assert 4.0 <= dur <= 6.0, "مدة المعاينة %s ثانية، المتوقع نحو 5" % dur
+    assert page.evaluate("EXPORTING") is False
+
+
+def test_mouth_review_flags_weak_frames_and_jumps_to_them(page):
+    page.wait_for_function("Object.keys(SH).every(n => !SHIMG[n] || imgs[n])", timeout=30000)
+    page.wait_for_timeout(500)
+    weak = lambda: page.evaluate("Object.values(frames).flat().filter(f => f.mouth && f.mouth.on && f.mouth.weak).length")
+    n0 = weak()
+    assert n0 >= 1                                                    # في اللوحات الافتراضية إطارات بلا خط شفتين واضح
+    page.evaluate("mSel.value = 'wave'; mFr.value = 1; mRecenter(); drawMouthPrev()")
+    page.evaluate("$('mNext').onclick()")
+    cur = page.evaluate("({ n: mSel.value, i: (+mFr.value) - 1 })")
+    assert page.evaluate("frames[%r][%d].mouth.weak" % (cur["n"], cur["i"])) is True   # قفز إلى إطار معلَّم
+    assert "يحتاج مراجعة" in page.evaluate("document.getElementById('mInfo').textContent")   # اللوحة الحالية فيها إطار معلَّم
+    page.evaluate("$('mR').value = 3; $('mR').oninput()")             # أي تعديل يدوي = تمت المراجعة
+    assert weak() == n0 - 1
+    assert page.evaluate("frames[%r][%d].mouth.weak" % (cur["n"], cur["i"])) is False

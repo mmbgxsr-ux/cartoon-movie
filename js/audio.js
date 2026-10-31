@@ -44,10 +44,16 @@ async function genLines(s) {
   const buf = ac().createBuffer(1, n, R), ch = buf.getChannelData(0); for (let i = 0; i < n; i++) ch[i] = pcm[i] / 32768;
   s.pcm = pcm; s.abuf = buf; s.adur = buf.duration; s.lineT = T;
 }
-async function genAll() {
+async function genAll(maxSec) {   // maxSec (اختياري): نتوقف عن توليد الصوت بعد هذا الزمن من الفيلم (للتصدير التجريبي)
   if (EMBON() || !gemKey() || !$('cTts').checked) return true; ac(); const vo1 = s => (typeof voiceOf === 'function' && voiceOf(s)) || $('sGv').value, vk = s => (s.lines && s.lines.length ? s.lines.map(L => vo1({ spk: L.spk }) + '|' + L.t).join('¦') : vo1(s)) + $('sGm').value;
   try {
-    for (let i = 0; i < SHOTS.length; i++) { const s = SHOTS[i]; const v = vk(s); if (s.abuf && s.gk === v) continue; msg('جاري توليد الصوت ' + (i + 1) + ' من ' + SHOTS.length + ' …'); await (s.lines && s.lines.length ? genLines(s) : gen(s)); s.gk = v; await sleep(800); }
+    let acc = 0;
+    for (let i = 0; i < SHOTS.length; i++) {
+      if (maxSec && acc >= maxSec) break;
+      const s = SHOTS[i], v = vk(s);
+      if (!(s.abuf && s.gk === v)) { msg('جاري توليد الصوت ' + (i + 1) + ' من ' + SHOTS.length + ' …'); await (s.lines && s.lines.length ? genLines(s) : gen(s)); s.gk = v; await sleep(800); }
+      if (maxSec) { recalc(); acc += s.dur; }   // المدة الفعلية بعد التوليد تحدد بداية المشهد التالي
+    }
     msg(''); recalc(); return true;
   } catch (e) { msg('خطأ Gemini: ' + errText(e)); return false; }
 }

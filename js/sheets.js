@@ -329,7 +329,7 @@ function build(name) {
     headInfo(f); f.hx = f._hx; f.mouth = { x: f._hx, y: 0, w: 0, r: 0, on: !cfg.nm && !cfg.mm };
   });
   { const hr = out.map(f => f.bb.y1 - f._ht).sort((a, b) => a - b), med = hr[hr.length >> 1] || 1, mk = cfg.mk || { y: .125, w: .030 };
-    out.forEach(f => { let h = f.bb.y1 - f._ht; if (h < .93 * med) h = med; f._hr = h; f.mouth.y = f._ht + h * mk.y; f.mouth.w = h * mk.w; if (f.mouth.on) refineMouth(f); }); }
+    out.forEach(f => { let h = f.bb.y1 - f._ht; if (h < .93 * med) h = med; f._hr = h; f.mouth.y = f._ht + h * mk.y; f.mouth.w = h * mk.w; if (f.mouth.on) f.mouth.weak = !refineMouth(f); }); }   // weak = لم يُعثر على خط شفتين واضح: الموضع تقدير فقط ويحتاج مراجعة
   const hs = out.map(f => f.bb.y1 - f.bb.y0).sort((a, b) => a - b); out.ch = hs[hs.length >> 1] || 1;
   if (cfg.lift) out.forEach((f, i) => { f.lift = (cfg.lift[i] || 0) * out.ch; });
   frames[name] = out; loadMouths(name);

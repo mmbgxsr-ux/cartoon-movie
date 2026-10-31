@@ -199,8 +199,8 @@ function refreshMouthUI() {
 const curF = () => { const fr = frames[mSel.value]; return fr && fr[(+mFr.value || 1) - 1]; };
 function mouthInfo() {
   const fr = frames[mSel.value]; if (!fr) { $('mInfo').textContent = 'ارفع لوحة شخصية أولًا'; return; }
-  const on = fr.filter(f => f.mouth && f.mouth.on).length, au = fr.filter(f => f.mouth && f.mouth.auto === 1).length;
-  $('mInfo').textContent = 'الفم مفعّل في ' + on + ' من ' + fr.length + ' إطار' + (au ? ' (' + au + ' بالاكتشاف الذكي)' : ' (تقدير تقريبي — اكتشف بـ Gemini أو اضبطه يدويًا)');
+  const on = fr.filter(f => f.mouth && f.mouth.on).length, au = fr.filter(f => f.mouth && f.mouth.auto === 1).length, wk = fr.filter(f => f.mouth && f.mouth.on && f.mouth.weak).length;
+  $('mInfo').textContent = 'الفم مفعّل في ' + on + ' من ' + fr.length + ' إطار' + (au ? ' (' + au + ' بالاكتشاف الذكي)' : ' (تقدير تقريبي — اكتشف بـ Gemini أو اضبطه يدويًا)') + (wk ? ' — ' + wk + ' إطار يحتاج مراجعة (اضغط «التالي للمراجعة»)' : '');
 }
 let mFS = false, mV = { cx: 0, cy: 0, vx: 0, vy: 0, vh: 1 };
 function mRecenter() { const f = curF(); if (!f) return; const z = +$('mZoom').value || 1, m = f.mouth; mV.cx = z > 1 && m ? m.x : f.width / 2; mV.cy = z > 1 && m ? m.y : f.height / 2; }
@@ -217,7 +217,7 @@ function drawMouthPrev() {
     for (let y = 0; y < S; y += 40) for (let x = (y / 40 % 2) * 40; x < S; x += 80) mg.fillRect(x, y, 40, 40);
     mg.save(); mg.translate(-vx * sc, -vy * sc); mg.drawImage(f, 0, 0, f.width * sc, f.height * sc);
     if (m) { if (m.on) paintMouth(mg, f, sc, m.x * sc, m.y * sc, MP, 1);
-      mg.strokeStyle = m.on ? '#0f0' : '#f55'; mg.lineWidth = 2; mg.beginPath(); mg.arc(m.x * sc, m.y * sc, 7, 0, 7); mg.stroke(); }
+      mg.strokeStyle = !m.on ? '#f55' : m.weak ? '#fa0' : '#0f0'; mg.lineWidth = 2; mg.beginPath(); mg.arc(m.x * sc, m.y * sc, 7, 0, 7); mg.stroke(); }
     mg.restore();
     if (m) { const p = mPos(f), h = mHandle(p); mg.strokeStyle = '#ffb020'; mg.fillStyle = '#ffb020'; mg.lineWidth = 3; mg.beginPath(); mg.moveTo(p.x, p.y); mg.lineTo(h.x, h.y); mg.stroke(); mg.beginPath(); mg.arc(h.x, h.y, 14, 0, 7); mg.fill(); mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); }
     if (m) { $('mW').value = Math.round(m.w / f.height * 1000); $('mOn').checked = !!m.on; }
@@ -229,7 +229,7 @@ function drawMouthPrev() {
   mg.drawImage(f, 0, 0, mc.width, Hh);
   if (m) {
     if (m.on) paintMouth(mg, f, sc, m.x * sc, m.y * sc, MP, 1);
-    mg.strokeStyle = m.on ? '#0f0' : '#f55'; mg.lineWidth = 1.5; mg.beginPath(); mg.arc(m.x * sc, m.y * sc, 4, 0, 7); mg.stroke();
+    mg.strokeStyle = !m.on ? '#f55' : m.weak ? '#fa0' : '#0f0'; mg.lineWidth = 1.5; mg.beginPath(); mg.arc(m.x * sc, m.y * sc, 4, 0, 7); mg.stroke();
     { const p = mPos(f), h = mHandle(p); mg.strokeStyle = '#ffb020'; mg.fillStyle = '#ffb020'; mg.lineWidth = 1.5; mg.beginPath(); mg.moveTo(p.x, p.y); mg.lineTo(h.x, h.y); mg.stroke(); mg.beginPath(); mg.arc(h.x, h.y, 6, 0, 7); mg.fill(); }
     $('mW').value = Math.round(m.w / f.height * 1000); $('mOn').checked = !!m.on;
   }
@@ -243,14 +243,14 @@ mFr.oninput = () => { mRecenter(); drawMouthPrev(); };
 function mSetPos(e) {
   const f = curF(); if (!f) return; const r = mc.getBoundingClientRect(), m = f.mouth || { r: 0, w: f.height * .04 }, u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
   const x = mFS ? mV.vx + u * mV.vh : u * f.width, y = mFS ? mV.vy + v * mV.vh : v * f.height;
-  f.mouth = Object.assign(m, { x, y, on: true, auto: 0 }); f._sk = null; saveMouths(mSel.value); drawMouthPrev();
+  f.mouth = Object.assign(m, { x, y, on: true, auto: 0, weak: false }); f._sk = null; saveMouths(mSel.value); drawMouthPrev();
 }
 let mDown = false, mRot = false;
 const mcXY = e => { const r = mc.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * mc.width, y: (e.clientY - r.top) / r.height * mc.height }; };
 function mSetRot(e) {
   const f = curF(); if (!f || !f.mouth) return; const p = mPos(f), q = mcXY(e);
   let a = Math.atan2(q.y - p.y, q.x - p.x) * 180 / Math.PI; a = Math.max(-60, Math.min(60, Math.round(a)));
-  f.mouth.r = a; f._sk = null; saveMouths(mSel.value); drawMouthPrev();
+  f.mouth.r = a; f.mouth.weak = false; f._sk = null; saveMouths(mSel.value); drawMouthPrev();
 }
 mc.onpointerdown = e => {
   mDown = true; try { mc.setPointerCapture(e.pointerId); } catch (_) {}
@@ -260,14 +260,25 @@ mc.onpointerdown = e => {
 };
 mc.onpointermove = e => { if (!mDown) return; if (mRot) mSetRot(e); else if (mFS) mSetPos(e); };   // اسحب القبضة البرتقالية لتدوير الفم
 mc.onpointerup = mc.onpointercancel = () => { mDown = false; mRot = false; };
-$('mR').oninput = () => { const f = curF(); if (!f || !f.mouth) return; f.mouth.r = +$('mR').value; f._sk = null; saveMouths(mSel.value); drawMouthPrev(); };
+$('mR').oninput = () => { const f = curF(); if (!f || !f.mouth) return; f.mouth.r = +$('mR').value; f.mouth.weak = false; f._sk = null; saveMouths(mSel.value); drawMouthPrev(); };
 $('mR0').onclick = () => { const f = curF(); if (!f || !f.mouth) return; f.mouth.r = 0; f._sk = null; saveMouths(mSel.value); drawMouthPrev(); };
-$('mW').oninput = () => { const f = curF(); if (!f || !f.mouth) return; f.mouth.w = +$('mW').value / 1000 * f.height; f._sk = null; saveMouths(mSel.value); drawMouthPrev(); };
-$('mOn').onchange = () => { const f = curF(); if (!f || !f.mouth) return; f.mouth.on = $('mOn').checked; saveMouths(mSel.value); drawMouthPrev(); };
+$('mW').oninput = () => { const f = curF(); if (!f || !f.mouth) return; f.mouth.w = +$('mW').value / 1000 * f.height; f.mouth.weak = false; f._sk = null; saveMouths(mSel.value); drawMouthPrev(); };
+$('mOn').onchange = () => { const f = curF(); if (!f || !f.mouth) return; f.mouth.on = $('mOn').checked; f.mouth.weak = false; saveMouths(mSel.value); drawMouthPrev(); };
 $('mAll').onclick = () => {
   const fr = frames[mSel.value], f = curF(); if (!fr || !f || !f.mouth) return; const Hf = f.bb.y1 - f.bb.y0, m = f.mouth;
   fr.forEach(g => { if (g === f) return; const k = (g.bb.y1 - g.bb.y0) / Hf; g.mouth = { x: g.ax + (m.x - f.ax) * k, y: g.bb.y0 + (m.y - f.bb.y0) * k, w: m.w * k, r: m.r || 0, on: m.on }; g._sk = null; });
   saveMouths(mSel.value); msg('تم تعميم موضع الفم على كل إطارات اللوحة'); drawMouthPrev();
+};
+// الانتقال إلى أقرب إطار يحتاج مراجعة بعد الحالي (في هذه اللوحة ثم باقي اللوحات، مع الالتفاف)
+$('mNext').onclick = () => {
+  const names = Object.keys(frames).filter(n => frames[n] && !SH[n].nm && !SH[n].mm), cur = Math.max(0, names.indexOf(mSel.value)), curI = (+mFr.value || 1) - 1;
+  for (let k = 0; k <= names.length; k++) {
+    const n = names[(cur + k) % names.length], fr = frames[n];
+    for (let i = k === 0 ? curI + 1 : 0; i < fr.length; i++) if (fr[i].mouth && fr[i].mouth.on && fr[i].mouth.weak) {
+      mSel.value = n; mFr.max = fr.length; mFr.value = i + 1; mRecenter(); drawMouthPrev(); msg('الإطار ' + (i + 1) + ' في «' + SH[n].label + '» لم يُعثر فيه على خط شفتين واضح. اضغط على مكان الفم لضبطه'); return;
+    }
+  }
+  msg('لا توجد إطارات تحتاج مراجعة');
 };
 $('mAuto').onclick = async () => { if (busy) return; busy = true; await detectMouths(mSel.value, false); busy = false; };
 $('mReset').onclick = () => {
