@@ -611,3 +611,40 @@ def test_hiding_tab_does_not_touch_idle_or_export(page):
         assert page.evaluate("playing") is True               # التصدير لا يُقطع بإخفاء التبويب
     finally:
         page.evaluate("playing = false; EXPORTING = false")
+
+
+AUTOSAVE_OK = "CMPack.autosaveNow(true)"
+
+
+def _upload_bg_and_autosave(page, tmp_path):
+    (tmp_path / "auto_bg.png").write_bytes(_png(640, 360))
+    page.set_input_files("#fBg", str(tmp_path / "auto_bg.png"))
+    page.wait_for_function("bgs.length === 1 && bgs[0]._f", timeout=20000)
+    page.wait_for_function("CMPack.ready", timeout=20000)
+    page.wait_for_function(AUTOSAVE_OK, timeout=20000)      # أول نداءات قد تُرفض أثناء فحص اللقطة القديمة
+
+
+def test_autosave_offers_restore_after_unclean_exit(page, tmp_path):
+    assert page.query_selector("#restoreBar") is None       # صفحة نظيفة: لا عرض استعادة
+    _upload_bg_and_autosave(page, tmp_path)
+    reload(page)
+    page.wait_for_selector("#restoreBar", timeout=20000)
+    assert page.evaluate("bgs.length") == 0                 # لا استعادة تلقائية: العرض فقط حتى يوافق المستخدم
+    page.click("#restoreBar >> text=استعادة")
+    page.wait_for_function("window.CMPack && CMPack.ready && bgs.length === 1 && bgs[0]._f", timeout=60000)
+    page.wait_for_function("document.getElementById('msg').textContent.includes('تم استرجاع الحزمة')", timeout=20000)
+    assert page.query_selector("#restoreBar") is None
+
+
+def test_autosave_ignore_discards_snapshot(page, tmp_path):
+    _upload_bg_and_autosave(page, tmp_path)
+    reload(page)
+    page.wait_for_selector("#restoreBar", timeout=20000)
+    page.once("dialog", lambda d: d.accept())
+    page.click("#restoreBar >> text=تجاهل")
+    assert page.query_selector("#restoreBar") is None
+    page.wait_for_function(AUTOSAVE_OK, timeout=20000)      # حالة فارغة: تُمسح اللقطة القديمة
+    reload(page)
+    page.wait_for_function("CMPack.ready", timeout=20000)
+    page.wait_for_timeout(500)
+    assert page.query_selector("#restoreBar") is None
