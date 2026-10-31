@@ -2,9 +2,9 @@
 const M = { open: 0, wide: 0, round: 0, act: 0 };
 let AN = null, pk = 0.08, audioUntil = 0, tdata = null, fdata = null;
 SH.walk.nm = true; SH.back.nm = true;               // لا فم في المشي الجانبي أو من الخلف
-SH.sit.mk = { y: .132, w: .036 };
-SH.talk.mk = { y: .117, w: .030 }; SH.think.mk = { y: .121, w: .030 }; SH.awe.mk = { y: .113, w: .030 };
-SH.point.mk = { y: .115, w: .030 }; SH.wave.mk = { y: .118, w: .030 }; SH.sad.mm = true; // الحزن: الرأس منحنٍ فلا فم ظاهر                    // تقدير رأس الشخصية الجالسة
+SH.sit.mk = { y: .132, w: .044 };
+SH.talk.mk = { y: .117, w: .040 }; SH.think.mk = { y: .121, w: .040 }; SH.awe.mk = { y: .113, w: .040 };
+SH.point.mk = { y: .115, w: .040 }; SH.wave.mk = { y: .118, w: .040 }; SH.sad.mm = true; // الحزن: الرأس منحنٍ فلا فم ظاهر                    // تقدير رأس الشخصية الجالسة
 
 // ===== إزالة الخلفية الاحترافية =====
 // 1) تحديد لون/ألوان الخلفية من الحواف (تدعم لوحات مربعات الشفافية المزيفة)
@@ -173,14 +173,51 @@ function headInfo(f) {
   for (let y = ya; y <= yb && y < h; y++) for (let x = Math.max(0, Math.round(hx - Hr * .07)); x <= Math.min(w - 1, Math.round(hx + Hr * .07)); x++) { const i = (y * w + x) * 4; if (d[i + 3] > 200 && d[i] > 110 && d[i] > d[i + 1] + 10 && d[i] - d[i + 2] > 30) { fx += x; fn++; } }
   f._ht = ht; f._hx = fn > 40 ? fx / fn : hx;
 }
-// تدقيق موضع الفم: الشفاه أكثر احمرارًا من البشرة حولها
-function refineMouth(f) {
+// تقدير أولي لموضع الفم: الشفاه أكثر احمرارًا من البشرة حولها. يصيب الشفاه دائمًا تقريبًا لكن مركز الأحمر يميل للشفة السفلى،
+// فنستعمله مرساةً فقط ثم يضبطه refineMouth على خط انطباق الشفتين.
+function lipCentroid(f) {
   const m = f.mouth, Hr = f._hr, w = f.width, h = f.height, d = f.getContext('2d').getImageData(0, 0, w, h).data;
   const x0 = Math.max(0, Math.round(m.x - Hr * .04)), x1 = Math.min(w - 1, Math.round(m.x + Hr * .04)), y0 = Math.max(0, Math.round(m.y - Hr * .016)), y1 = Math.min(h - 1, Math.round(m.y + Hr * .016)), px = [];
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = (y * w + x) * 4; if (d[i + 3] > 200 && d[i] > 90) px.push([x, y, (d[i] - d[i + 1]) - .35 * d[i + 2]]); }
   if (px.length < 60) return; const sc = px.map(p => p[2]).sort((a, b) => a - b), th = sc[Math.floor(sc.length * .8)]; let sx = 0, sy = 0, sw = 0;
   for (const p of px) if (p[2] >= th) { const wt = p[2] - th + 1; sx += p[0] * wt; sy += p[1] * wt; sw += wt; }
   if (sw) { m.x = sx / sw; m.y = sy / sw; }
+}
+// تدقيق موضع الفم وميله وعرضه من خط انطباق الشفتين (أغمق خط شبه أفقي بين الشفتين).
+// في كل عمود نبحث عن أغمق نقطة داخل نافذة ضيقة حول التقدير ثم نلائم خطًا بانحدار متين (Theil–Sen):
+// ارتفاعه عند المركز = y، وانحداره = الميل r، وامتداد الأعمدة ذات التباين الكافي = العرض والمركز الأفقي.
+// (الطريقة القديمة كانت تأخذ مركز الأحمر، فيقع الفم على الشفة السفلى وبلا ميل، فيظهر الفم الأصلي فوق المرسوم.)
+// o.roll / o.width = false يمنع تغيير الميل أو العرض (نتيجة Gemini تحمل ميلها وعرضها). تعيد قياسات التشخيص أو null.
+function refineMouth(f, o) {
+  o = o || {}; lipCentroid(f); const m = f.mouth, top = .022, Hr = f._hr, w = f.width, h = f.height;
+  const x0 = Math.max(0, Math.round(m.x - Hr * .034)), x1 = Math.min(w - 1, Math.round(m.x + Hr * .034));
+  const y0 = Math.max(0, Math.round(m.y - Hr * top)), y1 = Math.min(h - 1, Math.round(m.y + Hr * .004));   // النافذة مثبّتة على مركز الشفاه: الخط أعلى منه بـ0.005–0.014، وأسفله ظل الذقن
+  const W = x1 - x0 + 1, Hh = y1 - y0 + 1; if (W < 8 || Hh < 5) return null;
+  const d = f.getContext('2d').getImageData(x0, y0, W, Hh).data;
+  const L = (x, y) => { const i = (y * W + x) * 4; return d[i + 3] > 200 ? .3 * d[i] + .59 * d[i + 1] + .11 * d[i + 2] : 255; };
+  const pts = [];                                   // لكل عمود: { x, y, c } (c = التباين: متوسط العمود − أغمق نقطة)
+  for (let x = 0; x < W; x++) {
+    const col = new Float32Array(Hh); let sum = 0; for (let y = 0; y < Hh; y++) { col[y] = L(x, y); sum += col[y]; }
+    let best = 1e9, by = -1; for (let y = 1; y < Hh - 1; y++) { const v = (col[y - 1] + 2 * col[y] + col[y + 1]) / 4; if (v < best) { best = v; by = y; } }
+    pts.push({ x: x0 + x, y: by < 0 ? -1 : y0 + by, c: sum / Hh - best, edge: by <= 1 || by >= Hh - 2 });
+  }
+  const cs = pts.map(p => p.c).sort((a, b) => a - b), ref = cs[Math.floor(cs.length * .75)], thr = Math.max(8, .4 * ref);
+  const ok = pts.filter(p => p.y >= 0 && !p.edge && p.c >= thr); if (ok.length < W * .35) return null;   // لا تباين كافٍ: نُبقي التقدير
+  const med = a => { const q = a.slice().sort((u, v) => u - v), n = q.length; return n % 2 ? q[n >> 1] : (q[n / 2 - 1] + q[n / 2]) / 2; };
+  const sl = []; for (let a = 0; a < ok.length; a++) for (let b = a + 1; b < ok.length; b++) if (ok[b].x - ok[a].x >= 4) sl.push((ok[b].y - ok[a].y) / (ok[b].x - ok[a].x));
+  const b = sl.length ? Math.max(-.4, Math.min(.4, med(sl))) : 0, yc = med(ok.map(p => p.y - b * (p.x - m.x)));
+  // أطول مقطع متصل من الأعمدة الجيدة (نسمح بفجوة حتى عمودين) = امتداد الفم
+  const good = new Set(ok.map(p => p.x)); let bestRun = null, cur = null, gap = 0;
+  for (let x = x0; x <= x1; x++) { if (good.has(x)) { if (!cur) cur = { a: x, b: x }; cur.b = x; gap = 0; } else if (cur && ++gap > 2) { if (!bestRun || cur.b - cur.a > bestRun.b - bestRun.a) bestRun = cur; cur = null; gap = 0; } }
+  if (cur && (!bestRun || cur.b - cur.a > bestRun.b - bestRun.a)) bestRun = cur;
+  const run = bestRun ? bestRun.b - bestRun.a + 1 : 0, xc = bestRun ? (bestRun.a + bestRun.b) / 2 : m.x;
+  const res = ok.map(p => Math.abs(p.y - b * (p.x - m.x) - yc)); if (med(res) > Hr * .004) return null;   // ليست خطًا مستقيمًا (يد أو ظل): نُبقي المرساة
+  const lim = Hr * .012;
+  m.y = yc; m.x += Math.max(-lim, Math.min(lim, xc - m.x));
+  if (o.roll !== false) m.r = +(Math.atan(b) * 180 / Math.PI).toFixed(1);
+  // العرض: الامتداد الظاهر للخط الداكن يقلّ عن العرض الحقيقي (الزاويتان يخفتان)، فنستعمله نسبيًا فقط: الفم الأضيق (رأس ملتفت) يضيق حتى 10٪
+  if (o.width !== false && run >= Hr * .02) m.w *= 1 + .5 * (Math.max(.8, Math.min(1.2, run / (.029 * Hr))) - 1);
+  return { slope: b, run, runHr: run / Hr, n: ok.length };
 }
 // قص شبكة من صورة: cols×rows (أو نطاقات أفقية مخصّصة xr لصور الوضعيات المنفصلة)
 function cutGrid(img, cfg, cols, rows, xr) {

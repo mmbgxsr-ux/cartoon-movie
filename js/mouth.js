@@ -1,12 +1,13 @@
 // ===================== تحريك الفم =====================
 function skinOf(f, m) {
   const sig = Math.round(m.x) + ',' + Math.round(m.y) + ',' + Math.round(m.w); if (f._sk && f._sk.sig === sig) return f._sk;
-  let r = 0, g = 0, b = 0, n = 0; const g2 = f.getContext('2d');
+  const R = [], G = [], B = []; const g2 = f.getContext('2d');
   for (const [dx, dy] of [[-.85, -.12], [.85, -.12], [-.7, .35], [.7, .35], [0, -.9]]) {
     const x = Math.round(m.x + dx * m.w), y = Math.round(m.y + dy * m.w); if (x < 1 || y < 1 || x >= f.width - 1 || y >= f.height - 1) continue;
-    try { const d = g2.getImageData(x - 1, y - 1, 3, 3).data; for (let i = 0; i < 36; i += 4) if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } } catch (_) {}
+    try { const d = g2.getImageData(x - 1, y - 1, 3, 3).data; for (let i = 0; i < 36; i += 4) if (d[i + 3] > 200) { R.push(d[i]); G.push(d[i + 1]); B.push(d[i + 2]); } } catch (_) {}
   }
-  const sk = n ? { r: (r / n) | 0, g: (g / n) | 0, b: (b / n) | 0 } : { r: 205, g: 150, b: 125 }; sk.sig = sig; return (f._sk = sk);
+  const med = a => { a.sort((u, v) => u - v); return a[a.length >> 1]; };
+  const sk = R.length ? { r: med(R), g: med(G), b: med(B) } : { r: 205, g: 150, b: 125 }; sk.sig = sig; return (f._sk = sk);
 }
 function paintMouth(c2, f, sc, mx, my, st, alpha) {
   const m = f.mouth; if (!m || !m.on || alpha < .02 || st.act < .02) return;

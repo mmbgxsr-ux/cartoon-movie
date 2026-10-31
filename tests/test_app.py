@@ -648,3 +648,41 @@ def test_autosave_ignore_discards_snapshot(page, tmp_path):
     page.wait_for_function("CMPack.ready", timeout=20000)
     page.wait_for_timeout(500)
     assert page.query_selector("#restoreBar") is None
+
+
+_FAKE_FACE = """(opts) => {
+  const c = document.createElement('canvas'); c.width = 400; c.height = 800; const g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = 'rgb(205,150,125)'; g.fillRect(0, 0, 400, 800);
+  if (opts.line) { g.strokeStyle = 'rgb(60,25,25)'; g.lineWidth = 3; g.beginPath(); g.moveTo(180, 300 - opts.slope * 20); g.lineTo(220, 300 + opts.slope * 20); g.stroke(); }
+  if (opts.noise) { const im = g.getImageData(0, 0, 400, 800), d = im.data; let s = 7; for (let i = 0; i < d.length; i += 4) { s = (s * 1103515245 + 12345) & 0x7fffffff; const v = 150 + (s >> 8) % 60; d[i] = v; d[i + 1] = v - 40; d[i + 2] = v - 60; } g.putImageData(im, 0, 0); }
+  c._hr = 700; c.mouth = { x: 200, y: 308, w: 28, r: 0, on: true };    // التقدير الأولي أخفض من الخط بـ8 بكسل
+  const ret = refineMouth(c);
+  return { ret, y: c.mouth.y, x: c.mouth.x, r: c.mouth.r, w: c.mouth.w };
+}"""
+
+
+def test_refine_mouth_snaps_to_lip_line_and_measures_roll(page):
+    flat = page.evaluate(_FAKE_FACE, {"line": True, "slope": 0})
+    assert flat["ret"] is not None
+    assert abs(flat["y"] - 300) <= 2 and abs(flat["r"]) <= 2          # يهبط الفم على الخط ولا ميل
+    tilt = page.evaluate(_FAKE_FACE, {"line": True, "slope": -0.3})    # الخط يرتفع جهة اليمين
+    assert tilt["ret"] is not None and abs(tilt["y"] - 300) <= 2
+    assert -22 <= tilt["r"] <= -10                                    # ≈ −16.7°: الإشارة سالبة كما يتوقع paintMouth
+
+
+def test_refine_mouth_keeps_estimate_when_no_line(page):
+    blank = page.evaluate(_FAKE_FACE, {"line": False})                # بشرة ملساء: لا خط
+    assert blank["ret"] is None
+    noisy = page.evaluate(_FAKE_FACE, {"line": False, "noise": True})  # ضجيج عشوائي: ليس خطًا مستقيمًا
+    assert noisy["ret"] is None
+
+
+def test_default_sheet_mouths_sit_on_lips_with_realistic_width(page):
+    page.wait_for_function("Object.keys(SH).every(n => !SHIMG[n] || imgs[n])", timeout=30000)
+    page.wait_for_timeout(500)
+    s = page.evaluate("""() => { const f = frames.talk, hr = f.map(x => x._hr), est = f.map(x => x._ht + x._hr * SH.talk.mk.y);
+      return { n: f.length, w: f.map((x, i) => x.mouth.w / hr[i]), up: f.map((x, i) => (est[i] - x.mouth.y) / hr[i]), r: f.map(x => x.mouth.r || 0) }; }""")
+    assert all(0.034 <= w <= 0.046 for w in s["w"])                   # الفم ≈ 0.04 من ارتفاع الجسم (كان 0.03 فيظهر الفم الأصلي حول المرسوم)
+    assert sum(1 for u in s["up"] if 0.002 <= u <= 0.026) >= s["n"] - 2   # الفم أعلى من التقدير الأولي (يهبط على خط الشفتين لا على الشفة السفلى)
+    assert sum(1 for r in s["r"] if abs(r) >= 1) >= s["n"] // 2       # الميل يُقاس لا يُترك صفرًا
+    assert all(abs(r) <= 22 for r in s["r"])
