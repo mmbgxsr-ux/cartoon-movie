@@ -78,10 +78,10 @@ function tintSk(sk) { const A = CUR_AMB; if (!A) return sk; const m = 1 - A.dim,
 // حركة كاميرا بطيئة تختلف من مشهد لآخر: تقريب، ثم تحريك لليمين، ثم ابتعاد، ثم تحريك لليسار
 function camRect(s, tt, im) {
   const u = ease(tt / s.dur), c = (s.cam || 0) % 4;
-  const z = c === 0 ? 1 + .06 * u : c === 2 ? 1.06 - .06 * u : 1.10;
+  const z = s.camx === 'still' ? 1 : c === 0 ? 1 + .06 * u : c === 2 ? 1.06 - .06 * u : 1.10;
   const k = Math.max(W / im.naturalWidth, H / im.naturalHeight) * z * ($('cPar') && $('cPar').checked ? 1.09 : 1),   // هامش إضافي حتى لا يظهر طرف فارغ عند إزاحة الطبقات
     w = im.naturalWidth * k, h = im.naturalHeight * k;
-  const pan = c === 1 ? (2 * u - 1) : c === 3 ? (1 - 2 * u) : 0;
+  const pan = s.camx === 'still' ? 0 : c === 1 ? (2 * u - 1) : c === 3 ? (1 - 2 * u) : 0;
   return { x: (W - w) / 2 + pan * (w - W) / 2 * .9, y: (H - h) / 2, w, h };
 }
 const greenOn = () => !rec && !EXPORTING && $('cGreen') && $('cGreen').checked;

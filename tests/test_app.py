@@ -757,3 +757,57 @@ def test_mouth_review_flags_weak_frames_and_jumps_to_them(page):
     page.evaluate("$('mR').value = 3; $('mR').oninput()")             # أي تعديل يدوي = تمت المراجعة
     assert weak() == n0 - 1
     assert page.evaluate("frames[%r][%d].mouth.weak" % (cur["n"], cur["i"])) is False
+
+
+# ---------- كاميرا المشهد (اختيار لكل مشهد) ----------
+CAM_MAXZ = """i => { let mx = 0, mn = 9; const s = SHOTS[i]; for (let t = 0; t <= s.dur; t += .25) { const c = camFor(s, t, i); mx = Math.max(mx, c.z); mn = Math.min(mn, c.z); } return [mn, mx]; }"""
+LONG = "جملة طويلة نسبيًا لتصبح مدة المشهد كافية لظهور اللقطة القريبة في منتصفه، " * 3
+
+
+def _cam_scenes(extra):
+    base = [{"h": "م%d" % i, "bg": 1, "text": LONG, "acts": [[0, "talk"]], "props": []} for i in range(4)]
+    for i, e in extra.items():
+        base[i].update(e)
+    return base
+
+
+def test_scene_camera_modes_apply(page):
+    scenes = _cam_scenes({0: {"camx": "still"}, 1: {"nocu": True}, 3: {"camx": "bogus"}})
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    assert page.evaluate("SHOTS.map(s => s.camx || null)") == ["still", None, None, None]  # قيمة غير معروفة تُهمل
+    assert page.evaluate("SHOTS[1].nocu") is True and page.evaluate("!SHOTS[2].nocu")
+    lo, hi = page.evaluate(CAM_MAXZ, 0)
+    assert hi < 1.02, "الثابتة لا تتحرك: %s" % hi
+    _, hi_nocu = page.evaluate(CAM_MAXZ, 1)
+    _, hi_auto = page.evaluate(CAM_MAXZ, 2)
+    assert hi_auto > 1.15, "التلقائي فيه لقطة قريبة: %s" % hi_auto
+    assert hi_nocu < 1.12, "بدون لقطة قريبة: %s" % hi_nocu
+    assert page.errors == []
+
+
+def test_scene_camera_type_overrides_order(page):
+    scenes = _cam_scenes({0: {"camx": "left"}, 1: {"camx": "right"}})
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    # نوع الحركة من الاختيار لا من ترتيب المشهد: left=3، right=1، والباقي تلقائي (i % 4)
+    assert page.evaluate("SHOTS.map(s => s.cam)") == [3, 1, 2, 3]
+    # الانزلاق لليمين واليسار باتجاهين متعاكسين في آخر المشهد
+    dx0 = page.evaluate("camFor(SHOTS[0], SHOTS[0].dur * .9, 0).dx")
+    dx1 = page.evaluate("camFor(SHOTS[1], SHOTS[1].dur * .9, 1).dx")
+    assert dx0 * dx1 < 0
+    assert page.errors == []
+
+
+def test_editor_saves_camera_choice(page):
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(SCENES)))
+    reload(page)
+    open_tab(page, "#eList")
+    sel = page.locator("#eList select[title='حركة الكاميرا']")
+    assert sel.count() == 2
+    sel.first.select_option("still")
+    assert page.locator("#eList select[title='حركة الكاميرا']").first.input_value() == "still"
+    page.click("#eSave")
+    page.wait_for_function("window.Store && Store.ready && typeof SHOTS !== 'undefined' && SHOTS[0].camx === 'still' && document.querySelector('#eList select')", timeout=45000)
+    assert page.evaluate("SHOTS[1].camx") is None
+    assert page.errors == []

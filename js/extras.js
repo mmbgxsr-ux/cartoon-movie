@@ -134,15 +134,16 @@ $('cRec').addEventListener('change', () => { if ($('cRec').checked) msg('أثن�
 // كل حركة تبدأ من الوضع الطبيعي (تقريب 1) فتتطابق مع الانتقال المتقاطع بين المشاهد دون قفزة
 function camFor(s, tt, idxS) {
   if (!$('cCam') || !$('cCam').checked || greenOn()) return null;
-  const u = Math.max(0, Math.min(1, tt / s.dur)), e = ease(u), type = idxS % 4, bk = s.map || s.bg || 1;
+  const u = Math.max(0, Math.min(1, tt / s.dur)), e = ease(u), type = (s.cam != null ? s.cam : idxS) % 4, bk = s.map || s.bg || 1;
   let z = 1, dx = 0;
-  if (type === 0) z = 1 + .07 * e;                                   // تقريب بطيء نحو الشخصية
+  if (s.camx === 'still') z = 1;                                     // لقطة ثابتة: بلا تقريب ولا انزلاق
+  else if (type === 0) z = 1 + .07 * e;                                   // تقريب بطيء نحو الشخصية
   else if (type === 1) { z = 1 + .05 * ease(Math.min(1, u * 5)); dx = (e - .5) * .05 * W; }   // انزلاق جانبي لليمين
   else if (type === 2) { z = 1 + .06 * Math.sin(Math.PI * Math.min(1, u * 1.15)) ; }          // تقريب ثم ارتداد خفيف
   else { z = 1 + .05 * ease(Math.min(1, u * 5)); dx = (.5 - e) * .05 * W; }                  // انزلاق جانبي لليسار
   // لقطة قريبة وسط الشرح: زاوية ثانية على نفس المشهد (حوالي ربع المدة) بانتقال سريع وسلس
   const main = s.dur - s.inT - s.outT;
-  if (!s.noWalk && main > 9) {
+  if (!s.noWalk && main > 9 && !s.nocu && s.camx !== 'still') {
     const a = s.inT + main * .42, len = Math.min(6, main * .22), ra = .45;
     const k = ease((tt - a) / ra) * (1 - ease((tt - (a + len)) / ra)); z *= 1 + .16 * k;
   }
