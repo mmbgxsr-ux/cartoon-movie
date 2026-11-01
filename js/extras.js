@@ -203,12 +203,13 @@ function tickSim(dt) {
   const sh = SHOTS[idx];
   MOOD += (($('cMood').checked ? (sh.mood || 0) : 0) - MOOD) * Math.min(1, dt * .8);
   updateMouth(dt, sh); ambTick(sh);
-  LASTSH = null; idxTick(); WALKSH = $('cPar') && $('cPar').checked && LIFE() ? -.035 * walkOffset(sh, t) : 0; const cam = camFor(sh, t, idx); camBegin(cam); drawBg(sh, t); drawFx(sh); drawChar(sh, t); drawFg(sh, t); drawProps(sh, t); drawMulti(sh, t); camEnd(cam); drawChip(sh); drawCards(sh, t); drawCaption(sh, t);
+  LASTSH = null; idxTick(); WALKSH = $('cPar') && $('cPar').checked && LIFE() ? -.035 * walkOffset(sh, t) : 0; const cam = camFor(sh, t, idx); camBegin(cam); drawBg(sh, t); drawFx(sh); drawChar(sh, t); drawFg(sh, t); drawProps(sh, t); drawMulti(sh, t); drawWx(sh, t, idx); camEnd(cam); drawChip(sh); drawCards(sh, t); drawCaption(sh, t);
   // انتقال ناعم: الخلفية التالية تظهر تدريجيًا فوق المشهد الحالي (تلاشٍ متقاطع). الأسود فقط في أول الفيلم وآخره
   const isLast = idx === SHOTS.length - 1, X = Math.min(.9, sh.outT);
   if (!isLast && t > sh.dur - X) drawBg(SHOTS[idx + 1], 0, ease((t - (sh.dur - X)) / X));
   gradeFx();
   { let vm = sh.mood || 0; if (!isLast && t > sh.dur - X) vm = vm * (1 - ease((t - (sh.dur - X)) / X)) + (SHOTS[idx + 1].mood || 0) * ease((t - (sh.dur - X)) / X); if ($('cMood').checked) moodOv(vm); }
+  lightOv(sh, isLast ? null : SHOTS[idx + 1], !isLast && t > sh.dur - X ? ease((t - (sh.dur - X)) / X) : 0);
   if ($('cIris') && $('cIris').checked && !greenOn()) {   // فتح وإغلاق دائري كأفلام الكرتون الكلاسيكية
     const IR = 1.2; let kk = 1; if (idx === 0 && t < IR) kk = ease(t / IR); else if (isLast && t > sh.dur - IR) kk = 1 - ease((t - (sh.dur - IR)) / IR);
     if (kk < .999) { ctx.save(); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(W * .5, H * .52, Math.max(.1, kk * Math.hypot(W, H) * .55), 0, 7); ctx.fill('evenodd'); ctx.restore(); }
