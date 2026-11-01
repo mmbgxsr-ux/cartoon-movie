@@ -3,6 +3,7 @@ const PERF = { on: /[?&]perf\b/.test(location.search) };   // عدّاد الأ�
 let QPOSE = null;   // وضعية الشخصية أثناء السؤال: { mode, t0 } (يضبطها js/decision.js)
 let QWAIT = false;   // يصبح true أثناء عرض سؤال لحظة القرار (js/decision.js)
 
+const CAMX = ['still', 'in', 'bounce', 'right', 'left'], CAMI = { in: 0, right: 1, bounce: 2, left: 3 };   // حركة الكاميرا المختارة لمشهد (تلقائي = غياب الحقل)
 const IN = 2, OUT = 1.2, RATE = 9.5, WAVE_HOLD = 2.6;   // WAVE_HOLD: مدة التلويح بالثواني بعد رفع اليد
 const SHOTS = [
  { h: 'مشهد 1', bg: 1, acts: [[0, 'wave']], text: `اكتب هنا نص المشهد الأول من تبويب «المحرر».` }
@@ -17,13 +18,13 @@ try {
       if (x.spk) o.spk = String(x.spk); if (Array.isArray(x.cast) && x.cast.length) o.cast = x.cast.map(String); if (x.noWalk || o.spk || (o.cast && (o.cast.length > 1 || o.cast[0] !== 'guide'))) o.noWalk = true; if (hasL(x)) { o.lines = x.lines.filter(l => l && String(l.t || '').trim()).map(l => ({ spk: String(l.spk || 'guide'), t: String(l.t).trim() })); o.cast = [...new Set(o.lines.map(l => l.spk))]; o.spk = o.lines[0].spk === 'guide' ? undefined : o.lines[0].spk; if (o.cast.length > 1 || o.cast[0] !== 'guide') o.noWalk = true; }
       if (x.holo) o.holo = true; if (x.noFace) o.noFace = true; if (x.amb) o.amb = String(x.amb); if (x.era) o.era = String(x.era); if (x.year) o.year = String(x.year); if (x.pos && typeof x.pos === 'object' && Object.keys(x.pos).length) o.pos = x.pos; if (x.wear && typeof x.wear === 'object' && Object.keys(x.wear).length) o.wear = x.wear;
       if (x.q && typeof x.q === 'object' && x.q.q && Array.isArray(x.q.opts) && x.q.opts.length >= 2) { const n = x.q.opts.length, a = x.q.ans != null && +x.q.ans >= 0 && +x.q.ans < n ? Math.floor(+x.q.ans) : -1; o.q = { q: String(x.q.q), opts: x.q.opts.map(String), ans: a, why: x.q.why ? String(x.q.why) : '' }; }   // لحظة قرار: ans=-1 يعني سؤال تفكير بلا إجابة واحدة صحيحة
-      if (x.run) o.run = true; if (x.out) o.out = x.out; if (+x.extra) o.extra = +x.extra; return o;
+      if (x.run) o.run = true; if (x.out) o.out = x.out; if (+x.extra) o.extra = +x.extra; if (CAMX.includes(x.camx)) o.camx = x.camx; if (x.nocu) o.nocu = true; return o;
     });
     if (ok.length) SHOTS.splice(0, SHOTS.length, ...ok);
   }
 } catch (_) {}
 SHOTS.forEach((s, i) => {
-  s.cam = i % 4; s.mood = (s.acts || []).some(a => a[1] === 'sad') ? -1 : (s.acts || []).some(a => a[1] === 'awe' || a[1] === 'joy') ? 1 : 0;
+  s.cam = CAMI[s.camx] != null ? CAMI[s.camx] : i % 4; s.mood = (s.acts || []).some(a => a[1] === 'sad') ? -1 : (s.acts || []).some(a => a[1] === 'awe' || a[1] === 'joy') ? 1 : 0;
   s.inT = s.noWalk ? 0.5 : (s.run ? 1.3 : IN); s.outT = s.noWalk ? 0.5 : (s.out === 'turnaway' ? 2.1 : s.run ? .9 : OUT);
   s.main = Math.max(6, s.text.length / RATE) + (s.extra || 0);
   s.dur = s.inT + s.main + s.outT; s.map = s.bg;
