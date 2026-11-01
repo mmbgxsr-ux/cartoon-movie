@@ -11,7 +11,7 @@
   if (typeof ambTick === 'function' && typeof AMBP !== 'undefined') {
     const _tick0 = ambTick;
     ambTick = function (s) {
-      const pr = s && s.amb && AMB_PRESETS[s.amb]; if (!pr) return _tick0(s);
+      const am = s && (s.amb || (s.wx === 'rain' || s.wx === 'storm' ? 'rain' : !s.wx && s.lt === 'night' ? 'night' : null)), pr = am && AMB_PRESETS[am]; if (!pr) return _tick0(s);
       const k = s.map || s.bg || 1, old = AMBP[k]; AMBP[k] = pr[1]; try { return _tick0(s); } finally { if (old === undefined) delete AMBP[k]; else AMBP[k] = old; }
     };
   }

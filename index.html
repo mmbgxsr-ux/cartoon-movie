@@ -145,7 +145,7 @@
 
 <script src="js/storage.js"></script>
 <script>
-const FILES=["js/core.js", "js/safety.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/export.js", "js/guard.js", "js/settings.js", "assets/shimg.js", "js/framecache.js", "js/backgrounds.js", "js/cast.js", "js/hologram.js", "js/decision.js", "js/perf.js", "js/timeline.js", "js/topplay.js", "js/project.js", "js/package.js", "js/editor.js", "js/worlds.js", "js/packs.js", "js/tabs.js", "js/a11y.js"];
+const FILES=["js/core.js", "js/safety.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/weather.js", "js/export.js", "js/guard.js", "js/settings.js", "assets/shimg.js", "js/framecache.js", "js/backgrounds.js", "js/cast.js", "js/hologram.js", "js/decision.js", "js/perf.js", "js/timeline.js", "js/topplay.js", "js/project.js", "js/package.js", "js/editor.js", "js/worlds.js", "js/packs.js", "js/tabs.js", "js/a11y.js"];
 Store.init().then(()=>{FILES.forEach(f=>{const s=document.createElement('script');s.src=f;s.async=false;s.onerror=()=>{document.getElementById('msg').textContent='تعذّر تحميل '+f;const b=document.getElementById('boot');if(b)b.remove();};document.body.appendChild(s);});});
 </script>
 </body></html>

@@ -1,6 +1,6 @@
 (function () {
   const SK = 'cartoonScenes1', ACT = [['talk', 'حديث'], ['wave', 'تلويح'], ['point', 'إشارة'], ['think', 'تفكير'], ['sad', 'حزن'], ['awe', 'دهشة'], ['sit', 'جلوس'], ['joy', 'فرح'], ['pointup', 'إشارة للأعلى'], ['turn', 'التفات']];
-  const pick = s => JSON.parse(JSON.stringify({ h: s.h || '', bg: s.bg || 1, text: s.text || '', acts: s.acts || [[0, 'talk']], props: s.props || [], noWalk: !!s.noWalk, run: !!s.run, out: s.out, extra: s.extra, spk: s.spk, cast: s.cast, lines: s.lines, pos: s.pos, wear: s.wear, noFace: s.noFace, era: s.era, year: s.year, amb: s.amb, q: s.q, holo: s.holo, camx: s.camx, nocu: s.nocu }));
+  const pick = s => JSON.parse(JSON.stringify({ h: s.h || '', bg: s.bg || 1, text: s.text || '', acts: s.acts || [[0, 'talk']], props: s.props || [], noWalk: !!s.noWalk, run: !!s.run, out: s.out, extra: s.extra, spk: s.spk, cast: s.cast, lines: s.lines, pos: s.pos, wear: s.wear, noFace: s.noFace, era: s.era, year: s.year, amb: s.amb, q: s.q, holo: s.holo, camx: s.camx, nocu: s.nocu, wx: s.wx, lt: s.lt }));
   let ED = SHOTS.map(pick);
   const el = (t, p, c) => { const e = document.createElement(t); if (p) Object.assign(e, p); (c || []).forEach(x => e.appendChild(x)); return e; };
   const sel = (opts, val, fn, lab) => { const s = el('select'); if (lab) s.title = lab; opts.forEach(([v, t]) => s.appendChild(el('option', { value: v, textContent: t }))); s.value = val; s.onchange = () => fn(s.value); return s; };
@@ -29,6 +29,9 @@
       const camRow = el('div', { className: 'row' }, [el('span', { textContent: 'الكاميرا' }),
         sel([['', 'تلقائي'], ['still', 'ثابتة'], ['in', 'تقريب بطيء'], ['bounce', 'تقريب ثم ارتداد'], ['right', 'انزلاق لليمين'], ['left', 'انزلاق لليسار']], s.camx || '', v => { s.camx = v || undefined; render(); }, 'حركة الكاميرا'),
         el('label', { style: 'white-space:nowrap' }, [el('input', { type: 'checkbox', checked: !!s.nocu || s.camx === 'still', disabled: s.camx === 'still', onchange() { s.nocu = this.checked || undefined; } }), el('span', { textContent: ' بدون لقطة قريبة' })])]);
+      const skyRow = el('div', { className: 'row' }, [el('span', { textContent: 'الجو' }),
+        sel([['', 'بدون طقس'], ['rain', '🌧️ مطر'], ['storm', '⛈️ عاصفة رعدية'], ['snow', '❄️ ثلج'], ['fog', '🌫️ ضباب']], s.wx || '', v => { s.wx = v || undefined; }, 'الطقس'),
+        sel([['', 'إضاءة طبيعية'], ['dawn', '🌅 فجر'], ['sunset', '🌇 غروب'], ['night', '🌙 ليل'], ['overcast', '☁️ غائم']], s.lt || '', v => { s.lt = v || undefined; }, 'الإضاءة')]);
       const eraRow = el('div', { className: 'row' }, [el('span', { textContent: 'شريط العصر' }),
         el('input', { value: s.era || '', placeholder: 'العصر', style: 'background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px;width:150px', oninput() { s.era = this.value.trim() || undefined; } }),
         el('input', { value: s.year || '', placeholder: 'السنة', style: 'background:#26313b;color:#eee;border:0;border-radius:6px;padding:6px;width:100px', oninput() { s.year = this.value.trim() || undefined; } }),
@@ -70,7 +73,7 @@
           const last = s.lines[s.lines.length - 1], ids = [...new Set(s.lines.map(x => x.spk))], nx = ids.find(i => i !== last.spk) || last.spk; s.lines.push({ spk: nx, t: '' }); syncLines(s); render(); } }));
         linesBox.appendChild(el('button', { type: 'button', textContent: 'إلغاء الحوار (نص عادي)', style: 'background:#3a4656;font-size:12px;margin-inline-start:6px', onclick() { s.lines = undefined; render(); } }));
       }
-      box.appendChild(el('div', { className: 'shot', style: 'display:block;cursor:default;padding:8px 0' }, (hasL ? [head, opts, camRow, eraRow, linesBox] : [head, opts, camRow, eraRow, castRow, ta, linesBox]).concat(pwRow ? [pwRow] : [])));
+      box.appendChild(el('div', { className: 'shot', style: 'display:block;cursor:default;padding:8px 0' }, (hasL ? [head, opts, camRow, skyRow, eraRow, linesBox] : [head, opts, camRow, skyRow, eraRow, castRow, ta, linesBox]).concat(pwRow ? [pwRow] : [])));
     });
   }
   document.getElementById('eDlg').onclick = () => {

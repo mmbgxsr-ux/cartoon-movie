@@ -811,3 +811,53 @@ def test_editor_saves_camera_choice(page):
     page.wait_for_function("window.Store && Store.ready && typeof SHOTS !== 'undefined' && SHOTS[0].camx === 'still' && document.querySelector('#eList select')", timeout=45000)
     assert page.evaluate("SHOTS[1].camx") is None
     assert page.errors == []
+
+
+# ---------- طقس وإضاءة المشهد ----------
+LUM_AT = """i => { idx = i; t = SHOTS[i].inT + 3; clock = 20.3; tickSim(0);   // الرسم والقياس في استدعاء واحد حتى لا تتخلله حلقة الرسم الحية
+    const c = document.getElementById('c'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let s = 0, n = 0; for (let k = 0; k < d.length; k += 4 * 97) { s += d[k] + d[k + 1] + d[k + 2]; n += 3; } return s / n; }"""
+
+
+def test_scene_sky_fields_validated(page):
+    scenes = _cam_scenes({0: {"wx": "rain", "lt": "night"}, 1: {"wx": "tornado", "lt": "disco"}, 2: {"wx": "fog"}})
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    assert page.evaluate("SHOTS.map(s => [s.wx || null, s.lt || null])") == [["rain", "night"], [None, None], ["fog", None], [None, None]]
+    assert page.errors == []
+
+
+def test_scene_sky_draws_and_darkens(page):
+    scenes = _cam_scenes({1: {"lt": "night"}, 2: {"wx": "storm"}, 3: {"wx": "snow", "lt": "sunset"}})
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    page.wait_for_timeout(1500)
+    base = page.evaluate(LUM_AT, 0)
+    night = page.evaluate(LUM_AT, 1)
+    assert night < base * .8, "الليل أغمق من الإضاءة الطبيعية: %s مقابل %s" % (night, base)
+    # كل الأوضاع، وعبر لحظات الانتقال بين المشاهد (بداية المشهد ونهايته) دون أخطاء
+    for i in range(4):
+        for f in (0.0, .5, 3.0, 99):
+            page.evaluate("([i, f]) => { idx = i; t = f === 99 ? SHOTS[i].dur - .3 : f; clock = 7 + f; tickSim(0); }", [i, f])
+    assert page.errors == []
+
+
+def test_weather_amount_fades_between_scenes(page):
+    scenes = _cam_scenes({1: {"wx": "rain"}, 2: {"wx": "rain"}})
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    amt = lambda i, t: page.evaluate("([i, t]) => wxAmount(SHOTS[i], t, i)", [i, t])
+    assert amt(1, 0) == 0 and amt(1, .45) < 1 and amt(1, 3) == 1   # يظهر تدريجيًا بعد مشهد بلا مطر
+    assert amt(2, 0) == 1                                           # استمرار المطر بين مشهدين دون انقطاع
+    assert page.evaluate("([t]) => wxAmount(SHOTS[2], SHOTS[2].dur - .01, 2)", [0]) < .05   # يخفت قبل مشهد بلا مطر
+
+
+def test_editor_saves_sky_choice(page):
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(SCENES)))
+    reload(page)
+    open_tab(page, "#eList")
+    page.locator("#eList select[title='الطقس']").first.select_option("rain")
+    page.locator("#eList select[title='الإضاءة']").first.select_option("night")
+    page.click("#eSave")
+    page.wait_for_function("window.Store && Store.ready && typeof SHOTS !== 'undefined' && SHOTS[0].wx === 'rain' && document.querySelector('#eList select')", timeout=45000)
+    assert page.evaluate("[SHOTS[0].lt, SHOTS[1].wx || null]") == ["night", None]
+    assert page.errors == []
