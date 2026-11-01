@@ -814,7 +814,8 @@ def test_editor_saves_camera_choice(page):
 
 
 # ---------- طقس وإضاءة المشهد ----------
-LUM = """() => { const c = document.getElementById('c'), g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data; let s = 0, n = 0; for (let i = 0; i < d.length; i += 4 * 97) { s += d[i] + d[i + 1] + d[i + 2]; n += 3; } return s / n; }"""
+LUM_AT = """i => { idx = i; t = SHOTS[i].inT + 3; clock = 20.3; tickSim(0);   // الرسم والقياس في استدعاء واحد حتى لا تتخلله حلقة الرسم الحية
+    const c = document.getElementById('c'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let s = 0, n = 0; for (let k = 0; k < d.length; k += 4 * 97) { s += d[k] + d[k + 1] + d[k + 2]; n += 3; } return s / n; }"""
 
 
 def test_scene_sky_fields_validated(page):
@@ -830,11 +831,9 @@ def test_scene_sky_draws_and_darkens(page):
     page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
     reload(page)
     page.wait_for_timeout(1500)
-    frame = "i => { idx = i; t = SHOTS[i].inT + 3; clock = 20.3; tickSim(0); }"
-    page.evaluate(frame, 0)
-    base = page.evaluate(LUM)
-    page.evaluate(frame, 1)
-    assert page.evaluate(LUM) < base * .8, "الليل أغمق من الإضاءة الطبيعية"
+    base = page.evaluate(LUM_AT, 0)
+    night = page.evaluate(LUM_AT, 1)
+    assert night < base * .8, "الليل أغمق من الإضاءة الطبيعية: %s مقابل %s" % (night, base)
     # كل الأوضاع، وعبر لحظات الانتقال بين المشاهد (بداية المشهد ونهايته) دون أخطاء
     for i in range(4):
         for f in (0.0, .5, 3.0, 99):
