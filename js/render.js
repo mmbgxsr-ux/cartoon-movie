@@ -137,7 +137,8 @@ const ARRT = { point: .3, think: .5, sad: .7, awe: .5, wave: .85, joy: .5, point
 const settleF = t => t > 0 ? Math.exp(-6 * t) * Math.sin(17 * t) : 0;   // نابض مخمَّد: يتجاوز ثم يهدأ
 const UI = { size: () => +$('rSize').value || 1, mouth: () => +$('rMouth').value || 1 };
 const ease = u => { u = u < 0 ? 0 : u > 1 ? 1 : u; return u * u * (3 - 2 * u); };
-let BSEED = 0;   // بذرة جدول الرمش للشخصية التي تُرسم الآن (يضبطها withCast لكل فرد من الطاقم)
+let BSEED = 0, BTRIG = -99, BSLOW = 1;   // BTRIG: لحظة آخر تغيّر إيماءة (لرمشة نهاية العبارة)، BSLOW: رمشة أبطأ في الحزن
+//   // بذرة جدول الرمش للشخصية التي تُرسم الآن (يضبطها withCast لكل فرد من الطاقم)
 const STRIDE = 22, XF = 0.45; const isPP = n => SH.walk.pp && n >= 3 && n < 6;   // 3–5 إطارات: ذهاب وإياب؛ 6 فأكثر: دورة مشي كاملة تتكرر (ساق يمين ثم يسار)
 function strideNow() { const n = frames.walk ? frames.walk.length : 9; return isPP(n) ? 352 / (2 * n - 2) : STRIDE; }
 function blit(name, i, x, scl, dy, alpha, o) {
@@ -157,7 +158,7 @@ function blit(name, i, x, scl, dy, alpha, o) {
   ctx.drawImage(CEL() && !greenOn() ? inked(f) : tinted(f), -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc);
   if ($('cRim') && $('cRim').checked && !greenOn()) { const rm = rimOf(f); if (rm) ctx.drawImage(rm, -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc); }
   if (o.mouth && f.mouth && f.mouth.on && !cfg.nm && $('cMouth').checked) paintMouth(ctx, f, sc, (f.mouth.x - f.ax) * sc, (f.mouth.y - f.bb.y1) * sc, M, o.mouth * alpha);
-  if (f.eyes && playing && $('cBlink') && $('cBlink').checked) paintBlink(ctx, f, sc, blinkAmt(clock, BSEED) * Math.min(1, alpha));   // الرمش أثناء التشغيل والتصدير فقط (كي لا تتجمد المعاينة وعيناها مغمضتان)
+  if (f.eyes && playing && $('cBlink') && $('cBlink').checked) paintBlink(ctx, f, sc, blinkAmt(clock, BSEED, BTRIG, BSLOW) * Math.min(1, alpha));   // الرمش أثناء التشغيل والتصدير فقط (كي لا تتجمد المعاينة وعيناها مغمضتان)
   ctx.restore(); ctx.globalAlpha = 1;
 }
 // خط الحبر يُخبز مرة واحدة لكل وضعية ولكل خلفية (بدل رسمه 4 مرات في كل إطار)
@@ -347,7 +348,7 @@ function drawStand(s, m, X, A, noSh) {
     const emph = !evOn && M.act > .5 && M.open > .6 && clock - s._bl > 1.2;
     const hold = 2.4 + ((s._bk * 7 + 3) % 5) * .3;                // مدة الإيماءة تتفاوت 2.4–3.6 ثانية فلا يبدو الإيقاع آليًا
     const cid2 = evOn ? evCount(EV, audioPos(s)) : cid;            // مع الصوت المرفق: تتغير الإيماءة عند نهاية العبارة أو النبرة القوية فعلًا
-    if ((evOn ? (cid2 !== s._cid && clock - s._bl > 1.3) : cid !== s._cid) || clock - s._bl > hold + (evOn ? .6 : 0) || emph) { s._cid = evOn ? cid2 : cid; s._bk++; s._bl = clock; s._tp = clock; }
+    if ((evOn ? (cid2 !== s._cid && clock - s._bl > 1.3) : cid !== s._cid) || clock - s._bl > hold + (evOn ? .6 : 0) || emph) { s._cid = evOn ? cid2 : cid; s._bk++; s._bl = clock; s._tp = clock; if (rn(s._bk, 11) < .6) BTRIG = clock; }   // ~60% من تغيّرات الإيماءة يصحبها رمشة
     i0 = (Math.max(0, s._bk - 1) * mul + 3) % n; i1 = (s._bk * mul + 3) % n; u = ease((clock - s._tp - (LIFE() ? ANT : 0)) / .26);
   } else {
     let pos;
@@ -405,6 +406,7 @@ function drawStand(s, m, X, A, noSh) {
   let pn = name;
   if (frames.joy && ['talk', 'point', 'think'].includes(name)) { if (!s._kw) s._kw = kwEvents(s);   // كلمات الفرح (رائع، مبروك…): نستبدل الإطار بقفزة الفرح
     for (const e of s._kw) { if (e.t !== 'jump') continue; const k = (m - e.f) * main; if (k >= 0 && k < e.d) { pn = 'joy'; i0 = i1 = k < .2 ? 2 : k < .7 ? 3 : 1; u = 0; o.sy = 1; o.sx = 1; o.dy = k >= .2 && k < .7 ? -Math.sin((k - .2) / .5 * Math.PI) * 26 : 0; } } }
+  BSLOW = name === 'sad' ? 1.7 : 1;
   pair(pn, i0, i1, u, X, A, o);
   if (gOn() && !greenOn()) standFx(X, A);
   if ($('cSym') && $('cSym').checked && !greenOn() && (name === 'awe' || name === 'think')) {   // رمز فوق الرأس: ! عند الدهشة، ؟ عند التفكير
