@@ -37,10 +37,12 @@ function paintMouth(c2, f, sc, mx, my, st, alpha) {
 // ===== رمش العين =====
 // جدول حتمي من الزمن والبذرة (لكل شخصية بذرة مختلفة فلا ترمش الشخصيات معًا)، فتتطابق المعاينة والتصدير تمامًا.
 // كل دورة 3.7–5.1 ثانية فيها رمشة في لحظة عشوائية، وفي ~22% من الدورات رمشة ثانية سريعة بعدها (كالرمش الحقيقي).
-function blinkAmt(tm, seed) {
-  const P = 3.7 + (seed % 7) * .23, k = Math.floor(tm / P), ph = tm - k * P, a = .25 + rn(k, seed + 1) * (P - .9), dbl = rn(k, seed + 2) < .22;
-  const one = x => x < 0 || x > .2 ? 0 : x < .07 ? ease(x / .07) : x < .1 ? 1 : 1 - ease((x - .1) / .1);   // إغلاق سريع ← لحظة ثبات ← فتح أبطأ قليلًا
-  return Math.max(one(ph - a), dbl ? one(ph - a - .27) : 0);
+function blinkAmt(tm, seed, trig, slow) {
+  const P = 3.7 + (seed % 7) * .23, k = Math.floor(tm / P), ph = tm - k * P, a = .25 + rn(k, seed + 1) * (P - .9), dbl = rn(k, seed + 2) < .22, sl = slow || 1;
+  const one = x => { x /= sl; return x < 0 || x > .2 ? 0 : x < .07 ? ease(x / .07) : x < .1 ? 1 : 1 - ease((x - .1) / .1); };   // إغلاق سريع ← لحظة ثبات ← فتح أبطأ قليلًا (slow>1 = رمشة أبطأ وأثقل كما في الحزن)
+  // رمشة مرتبطة بالكلام: بعد تغيّر الإيماءة (نهاية عبارة) بتأخر صغير يختلف من شخصية لأخرى، فالناس ترمش غالبًا عند نهاية الجملة
+  const sp = trig != null ? one(tm - trig - .14 - (seed % 5) * .05) : 0;
+  return Math.max(one(ph - a), dbl ? one(ph - a - .27) : 0, sp);
 }
 // الجفن: بيضاوي بلون جلد الجفن (نصف لون تحت العين ونصف لون الوجنة، كي لا يغمق في الجهة المظللة) ينزل من أعلى العين (ويتمدد مع الإغلاق)، بحواف ناعمة، وخط رموش رفيع عند حافته السفلى
 function paintBlink(c2, f, sc, amt) {
@@ -229,8 +231,9 @@ function refreshMouthUI() {
 const curF = () => { const fr = frames[mSel.value]; return fr && fr[(+mFr.value || 1) - 1]; };
 function mouthInfo() {
   const fr = frames[mSel.value]; if (!fr) { $('mInfo').textContent = 'ارفع لوحة شخصية أولًا'; return; }
+  const cf = SH[mSel.value] || {}, eyeMiss = cf.ne ? 0 : fr.filter(f => f.mouth && f.mouth.on && !f.eyes).length;   // إطار فمه مفعّل لكن لم تُكشف عيناه: لن يرمش
   const on = fr.filter(f => f.mouth && f.mouth.on).length, au = fr.filter(f => f.mouth && f.mouth.auto === 1).length, wk = fr.filter(f => f.mouth && f.mouth.on && f.mouth.weak).length;
-  $('mInfo').textContent = 'الفم مفعّل في ' + on + ' من ' + fr.length + ' إطار' + (au ? ' (' + au + ' بالاكتشاف الذكي)' : ' (تقدير تقريبي — اكتشف بـ Gemini أو اضبطه يدويًا)') + (wk ? ' — ' + wk + ' إطار يحتاج مراجعة (اضغط «التالي للمراجعة»)' : '');
+  $('mInfo').textContent = 'الفم مفعّل في ' + on + ' من ' + fr.length + ' إطار' + (au ? ' (' + au + ' بالاكتشاف الذكي)' : ' (تقدير تقريبي — اكتشف بـ Gemini أو اضبطه يدويًا)') + (wk ? ' — ' + wk + ' إطار يحتاج مراجعة (اضغط «التالي للمراجعة»)' : '') + (eyeMiss ? ' — ' + eyeMiss + ' إطار لم تُكشف عيناه (لن يرمش؛ عادةً بسبب يد على الوجه أو فم غير مضبوط)' : '');
 }
 let mFS = false, mV = { cx: 0, cy: 0, vx: 0, vy: 0, vh: 1 };
 function mRecenter() { const f = curF(); if (!f) return; const z = +$('mZoom').value || 1, m = f.mouth; mV.cx = z > 1 && m ? m.x : f.width / 2; mV.cy = z > 1 && m ? m.y : f.height / 2; }

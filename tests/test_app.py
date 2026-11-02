@@ -725,6 +725,24 @@ def test_blink_paints_eyelids_only_while_playing_and_enabled(page):
     assert r["paused"] == 0 and r["off"] == 0                         # لا رمش والمعاينة متوقفة، ولا رمش إن أُلغي الخيار
 
 
+def test_blink_follows_phrase_end_and_slows_when_sad(page):
+    s = page.evaluate("""() => { const v = (tm, tr, sl) => blinkAmt(tm, 0, tr, sl);
+      // بعد تغيّر إيماءة عند t=100 تحدث رمشة خلال نحو نصف ثانية، حتى لو لم يكن في الجدول العشوائي رمشة هناك
+      let hit = 0, n = 0; for (let tr = 100; tr < 140; tr += 1.37) { n++; let mx = 0; for (let x = 0; x < .6; x += .01) mx = Math.max(mx, v(tr + x, tr, 1)); if (mx === 1) hit++; }
+      const w = sl => { let c = 0; for (let x = 0; x < 1; x += .005) if (v(50 + x, 50, sl) > .05) c++; return c; };
+      return { hit, n, same: blinkAmt(7.3, 3) === blinkAmt(7.3, 3, null, 1), fast: w(1), slow: w(1.7) }; }""")
+    assert s["hit"] == s["n"]                                         # كل محفّز يتبعه إغلاق كامل
+    assert s["same"]                                                  # بلا محفّز تبقى الدالة كما كانت
+    assert s["slow"] > s["fast"] * 1.4                                # رمشة الحزن أطول
+
+
+def test_mouth_info_reports_frames_without_detected_eyes(page):
+    page.wait_for_function("Object.keys(SH).every(n => !SHIMG[n] || imgs[n])", timeout=30000)
+    page.wait_for_timeout(500)
+    r = page.evaluate("""() => { refreshMouthUI(); mSel.value = 'sit'; mouthInfo(); const a = $('mInfo').textContent; frames.sit.forEach(f => { f.eyes = f.mouth.on ? {} : f.eyes; }); mouthInfo(); const b = $('mInfo').textContent; frames.sit.forEach(f => { f.eyes = null; }); mouthInfo(); return [a, b, $('mInfo').textContent]; }""")
+    assert "لم تُكشف عيناه" in r[0] and "لم تُكشف عيناه" not in r[1] and "6 إطار لم تُكشف" in r[2]
+
+
 def test_generate_audio_stops_after_test_export_window(page):
     """genAll(maxSec) لا يولّد صوت ما بعد الثواني المطلوبة، فلا يستدعي التصدير التجريبي Gemini لكل الفيلم."""
     scenes = [dict(SCENES[0], h="مشهد %d" % i, text="نص المشهد رقم %d للاختبار" % i) for i in range(4)]
