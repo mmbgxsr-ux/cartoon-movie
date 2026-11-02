@@ -147,11 +147,26 @@ function camFor(s, tt, idxS) {
     const a = s.inT + main * .42, len = Math.min(6, main * .22), ra = .45;
     const k = ease((tt - a) / ra) * (1 - ease((tt - (a + len)) / ra)); z *= 1 + .16 * k;
   }
-  const X = W * (GRX[bk] && +$('rX').value === 0.2 ? GRX[bk] : (+($('rX') ? $('rX').value : s.x) || s.x || .5)), Y = (GRG[bk] || 625) - H * .34;
+  const X = W * (GRX[bk] && +$('rX').value === 0.2 ? GRX[bk] : (+($('rX') ? $('rX').value : s.x) || s.x || .5)); let Y = (GRG[bk] || 625) - H * .34;
+  const fz = faceZoom(s, tt, bk); if (fz) { z = Math.min(1.34, z * (1 + fz.amt * fz.k)); Y += (fz.y - Y) * fz.k; }   // لقطة وجه: يتقدّم التقريب نحو الوجه نفسه (محور التكبير ينتقل إلى الوجه) فيبقى الوجه في مكانه ويكبر
   z *= 1.008 + .004 * Math.sin(tt * .5); dx += 3 * Math.sin(tt * .37);   // انجراف يدوي خفيف للكاميرا
   const dmax = X * (z - 1), dmin = -(W - X) * (z - 1);   // لا يظهر طرف فارغ أبدًا
   dx = Math.max(dmin, Math.min(dmax, dx));
   return { z, dx, X, Y };
+}
+// ===== لقطة قريبة على الوجه عند لحظات الدهشة والحزن =====
+// تبدأ بعد بداية الوضعية بنحو ثانية وتنتهي قبل نهايتها، ولا تعمل في الحوارات متعددة الشخصيات (لا يُعرف أي وجه) ولا في اللقطة الثابتة.
+const FACEZ = { awe: { amt: .15, inn: .8, out: .6 }, sad: { amt: .11, inn: 1.3, out: .9 } };
+function faceZoom(s, tt, bk) {
+  if (s.camx === 'still' || (typeof castList === 'function' && castList(s).length > 1)) return null;
+  const main = s.dur - s.inT - s.outT; if (main <= 0 || tt < s.inT || tt > s.dur - s.outT) return null;
+  const m = Math.min(.999, Math.max(0, mOf(s, tt))); let f0 = 0, f1 = 1, mode = 'talk';
+  (s.acts || []).forEach(([f, md], i) => { if (m >= f) { mode = md; f0 = f; f1 = s.acts[i + 1] ? s.acts[i + 1][0] : 1; } });
+  const Z = FACEZ[mode]; if (!Z || !frames[mode] || (f1 - f0) * main < 2) return null;   // وضعية أقصر من ثانيتين: لا تقريب
+  const k = ease((m - f0) * main / Z.inn) * ease((f1 - m) * main / Z.out); if (k <= .002) return null;
+  const fr = frames[mode], fm = fr[0], gr = GRG[bk] || 625, sc = SH[mode].th * .96 / fr.ch * UI.size() * (GRS[bk] || 1);
+  const y = fm && fm.mouth && fm.bb ? gr + (fm.mouth.y - fm.bb.y1) * sc - (fm._hr || 0) * sc * .02 : gr - H * .5;   // مركز الوجه تقريبًا (فوق الفم بقليل)
+  return { k, amt: Z.amt, y };
 }
 function camBegin(c) { if (!c) return; ctx.save(); ctx.translate(c.X + c.dx, c.Y); ctx.scale(c.z, c.z); ctx.translate(-c.X, -c.Y); }
 function camEnd(c) { if (c) ctx.restore(); }
