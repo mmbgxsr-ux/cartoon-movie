@@ -743,6 +743,25 @@ def test_mouth_info_reports_frames_without_detected_eyes(page):
     assert "لم تُكشف عيناه" in r[0] and "لم تُكشف عيناه" not in r[1] and "6 إطار لم تُكشف" in r[2]
 
 
+def test_face_zoom_pushes_in_on_awe_and_sad_only(page):
+    page.wait_for_function("Object.keys(SH).every(n => !SHIMG[n] || imgs[n])", timeout=30000)
+    page.wait_for_timeout(500)
+    r = page.evaluate("""() => {
+      const mk = acts => ({ dur: 22, inT: 2, outT: 1.2, cam: 0, bg: 1, x: .42, acts, text: 'نص', camx: undefined }), main = 22 - 2 - 1.2;
+      const at = (s, m) => camFor(s, s.inT + m * main, 0), s1 = mk([[0, 'talk'], [.4, 'awe'], [.8, 'talk']]), base = mk([[0, 'talk']]);
+      const mid = at(s1, .6), b = at(base, .6), early = at(s1, .405), still = at(Object.assign(mk([[0, 'talk'], [.4, 'awe'], [.8, 'talk']]), { camx: 'still' }), .6);
+      const sad = at(mk([[0, 'talk'], [.4, 'sad'], [.8, 'talk']]), .6), short = at(mk([[0, 'talk'], [.4, 'awe'], [.46, 'talk']]), .43), shortBase = at(mk([[0, 'talk'], [.4, 'awe'], [.46, 'talk']]).acts && mk([[0, 'talk']]), .43);
+      const fz = faceZoom(s1, s1.inT + .6 * main, 1);
+      return { mid: mid.z, b: b.z, midY: mid.Y, bY: b.Y, early: early.z, still: still.z, sad: sad.z, short: short.z, shortBase: shortBase.z, fy: fz && fz.y, max: Math.max(mid.z, sad.z) }; }""")
+    assert r["mid"] > r["b"] * 1.1                                    # الدهشة: تقريب إضافي واضح
+    assert r["sad"] > r["b"] * 1.06                                   # الحزن: تقريب أخف
+    assert r["midY"] < r["bY"] - 20 and 150 < r["fy"] < 400          # محور التكبير ينتقل إلى الوجه (فوق وسط الجسم)
+    assert r["early"] < r["mid"]                                      # يتدرّج، لا قفزة
+    assert r["still"] < 1.02                                          # اللقطة الثابتة لا تتحرك ولا تقترب
+    assert abs(r["short"] - r["shortBase"]) < .02                     # وضعية أقصر من ثانيتين: بلا تقريب
+    assert r["max"] <= 1.4
+
+
 def test_generate_audio_stops_after_test_export_window(page):
     """genAll(maxSec) لا يولّد صوت ما بعد الثواني المطلوبة، فلا يستدعي التصدير التجريبي Gemini لكل الفيلم."""
     scenes = [dict(SCENES[0], h="مشهد %d" % i, text="نص المشهد رقم %d للاختبار" % i) for i in range(4)]
