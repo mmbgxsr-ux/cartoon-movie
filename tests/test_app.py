@@ -688,6 +688,43 @@ def test_default_sheet_mouths_sit_on_lips_with_realistic_width(page):
     assert all(abs(r) <= 22 for r in s["r"])
 
 
+def test_default_sheet_eyes_are_found_above_the_mouth(page):
+    """كشف العينين للرمش: أغلب إطارات الأوضاع الأمامية، فوق خط الشفتين بمسافة معقولة، وبلا عيون في المشي والدهشة."""
+    page.wait_for_function("Object.keys(SH).every(n => !SHIMG[n] || imgs[n])", timeout=30000)
+    page.wait_for_timeout(500)
+    s = page.evaluate("""() => { const q = n => frames[n].map(f => f.eyes && f.eyes.on ? { up: (f.mouth.y - (f.eyes.ly + f.eyes.ry) / 2) / f._hr, d: f.eyes.d / f._hr } : null);
+      return { talk: q('talk'), sit: q('sit'), think: q('think'), awe: q('awe'), walk: q('walk'), run: q('run') }; }""")
+    for name in ("talk", "sit", "think"):
+        found = [e for e in s[name] if e]
+        assert len(found) >= len(s[name]) - 2, name                   # بضعة إطارات (يد على الوجه، التفات) قد لا يثبت فيها زوج مقنع، وهذا مقبول
+        assert all(0.03 <= e["up"] <= 0.048 for e in found), name     # العينان ≈ 0.038 من ارتفاع الجسم فوق الشفتين
+        assert all(0.034 <= e["d"] <= 0.056 for e in found), name
+    assert all(e is None for e in s["awe"] + s["walk"] + s["run"])    # الدهشة عيناها مفتوحتان، والمشي جانبي
+
+
+def test_blink_schedule_is_deterministic_rare_and_per_character(page):
+    s = page.evaluate("""() => { const T = Array.from({ length: 2000 }, (_, i) => i * .01), a = T.map(t => blinkAmt(t, 0)), b = T.map(t => blinkAmt(t, 0)), c = T.map(t => blinkAmt(t, 5));
+      return { same: a.every((v, i) => v === b[i]), range: a.every(v => v >= 0 && v <= 1), max: Math.max(...a), closed: a.filter(v => v > .05).length / a.length, differ: a.some((v, i) => Math.abs(v - c[i]) > .5) }; }""")
+    assert s["same"] and s["range"]                                   # حتمي: المعاينة والتصدير يرسمان الرمش نفسه
+    assert s["max"] == 1                                              # تُغلق العين تمامًا
+    assert 0.01 < s["closed"] < 0.12                                  # الرمش لحظات قصيرة لا حالة دائمة (≈ 4% من الوقت)
+    assert s["differ"]                                                # لكل شخصية جدول مختلف
+
+
+def test_blink_paints_eyelids_only_while_playing_and_enabled(page):
+    page.wait_for_function("Object.keys(SH).every(n => !SHIMG[n] || imgs[n])", timeout=30000)
+    page.wait_for_timeout(500)
+    r = page.evaluate("""() => {
+      CUR_BG = 1; GROUND = GRG[1] || 625; GSC = GRS[1] || 1; CUR_AMB = ambOf(1); const cv = document.getElementById('c'), f = frames.talk[0], sc = SH.talk.th * .96 / frames.talk.ch * UI.size() * GSC;
+      const cx = Math.round(640 + ((f.eyes.lx + f.eyes.rx) / 2 - f.ax) * sc), cy = Math.round(GROUND + ((f.eyes.ly + f.eyes.ry) / 2 - f.bb.y1) * sc);
+      const shot = (amt, play, on) => { playing = play; $('cBlink').checked = on; window.blinkAmt = () => amt; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+        blit('talk', 0, 640, 1, 0, 1, {}); return ctx.getImageData(cx - 16, cy - 8, 32, 16).data; };
+      const diff = (A, B) => { let n = 0; for (let i = 0; i < A.length; i += 4) if (Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]) > 40) n++; return n; };
+      const open = shot(0, true, true); return { closed: diff(open, shot(1, true, true)), paused: diff(open, shot(1, false, true)), off: diff(open, shot(1, true, false)) }; }""")
+    assert r["closed"] >= 15                                          # الجفن يغطي القزحيتين فيتغيّر عدد ملحوظ من البكسلات
+    assert r["paused"] == 0 and r["off"] == 0                         # لا رمش والمعاينة متوقفة، ولا رمش إن أُلغي الخيار
+
+
 def test_generate_audio_stops_after_test_export_window(page):
     """genAll(maxSec) لا يولّد صوت ما بعد الثواني المطلوبة، فلا يستدعي التصدير التجريبي Gemini لكل الفيلم."""
     scenes = [dict(SCENES[0], h="مشهد %d" % i, text="نص المشهد رقم %d للاختبار" % i) for i in range(4)]

@@ -5,6 +5,7 @@ SH.walk.nm = true; SH.back.nm = true;               // لا فم في المشي
 SH.sit.mk = { y: .132, w: .044 };
 SH.talk.mk = { y: .117, w: .040 }; SH.think.mk = { y: .121, w: .040 }; SH.awe.mk = { y: .113, w: .040 };
 SH.point.mk = { y: .115, w: .040 }; SH.wave.mk = { y: .118, w: .040 }; SH.sad.mm = true; // الحزن: الرأس منحنٍ فلا فم ظاهر                    // تقدير رأس الشخصية الجالسة
+SH.awe.ne = true;                                   // الدهشة: العينان مفتوحتان على اتساعهما فلا رمش (ne = no eyes)
 
 // ===== إزالة الخلفية الاحترافية =====
 // 1) تحديد لون/ألوان الخلفية من الحواف (تدعم لوحات مربعات الشفافية المزيفة)
@@ -320,6 +321,75 @@ function cutParts(P, cfg) {
   }
   return out;
 }
+// ===== كشف العينين (لأجل الرمش) =====
+// العينان تقعان فوق خط الشفتين بمسافة تقريبية ثابتة، على محور الوجه (يتبع ميل الفم). نبحث حول هذا التقدير عن أغمق نقطة
+// مدوّرة (القزحية) بتباين واضح عن محيطها، ثم نختار أفضل زوج متناظر: المسافة بينهما معقولة وعلى خط عمودي على محور الوجه.
+// الحاجب يشبه العين في الظلمة، لذلك نعاقب البعد عن التقدير ونشترط التناظر. إن لم يثبت زوج مقنع: لا عينان ولا رمش في هذا الإطار.
+const EYE = { dy: .038, dx: .0215, rx: .012, ry: .008 };   // نِسَب من ارتفاع الجسم f._hr (مقيسة على اللوحات الافتراضية): dx نصف المسافة بين العينين، rx/ry نصفا محور نافذة البحث
+function findEyes(f) {
+  const m = f.mouth, H = f._hr; if (!m || !m.on || !H || !f.getContext) return null;
+  const r = (m.r || 0) * Math.PI / 180, ux = Math.sin(r), uy = -Math.cos(r), rx = Math.cos(r), ry = Math.sin(r);
+  const ex = m.x + ux * H * EYE.dy, ey = m.y + uy * H * EYE.dy, RX = H * EYE.rx, RY = H * EYE.ry, ri = Math.max(1.2, H * .0045);
+  const span = Math.ceil(H * EYE.dx + RX + ri * 4), x0 = Math.max(0, Math.floor(ex - span)), y0 = Math.max(0, Math.floor(ey - span));
+  const x1 = Math.min(f.width - 1, Math.ceil(ex + span)), y1 = Math.min(f.height - 1, Math.ceil(ey + span)), W = x1 - x0 + 1, Hh = y1 - y0 + 1;
+  if (W < 10 || Hh < 10) return null;
+  let d; try { d = f.getContext('2d').getImageData(x0, y0, W, Hh).data; } catch (_) { return null; }
+  const L = new Float32Array(W * Hh), A = new Uint8Array(W * Hh);
+  for (let i = 0; i < W * Hh; i++) { L[i] = .3 * d[i * 4] + .59 * d[i * 4 + 1] + .11 * d[i * 4 + 2]; A[i] = d[i * 4 + 3] > 200 ? 1 : 0; }
+  const disc = (cx, cy, a, b) => {   // متوسط الإضاءة في حلقة بين نصفي قطر (a=0: قرص كامل)؛ null إن خرجت عن الشخصية
+    let s = 0, n = 0;
+    for (let y = Math.floor(cy - b); y <= Math.ceil(cy + b); y++) for (let x = Math.floor(cx - b); x <= Math.ceil(cx + b); x++) {
+      const q = Math.hypot(x - cx, y - cy); if (q < a || q > b) continue; if (x < 0 || y < 0 || x >= W || y >= Hh) return null; const k = y * W + x; if (!A[k]) return null; s += L[k]; n++;
+    }
+    return n ? s / n : null;
+  };
+  const sides = [], box = Math.ceil(Math.max(RX, RY)) + 1;
+  for (const sgn of [-1, 1]) {
+    const px = ex + rx * H * EYE.dx * sgn, py = ey + ry * H * EYE.dx * sgn, cand = [];
+    for (let y = Math.round(py - box); y <= py + box; y++) for (let x = Math.round(px - box); x <= px + box; x++) {
+      const along = (x - px) * rx + (y - py) * ry, up = (x - px) * ux + (y - py) * uy; if ((along / RX) ** 2 + (up / RY) ** 2 > 1) continue;
+      const c = disc(x - x0, y - y0, 0, ri), ring = disc(x - x0, y - y0, ri * 2, ri * 3.2); if (c == null || ring == null || c > 125 || ring - c < 18) continue;
+      cand.push({ x, y, score: ring - c - .8 * Math.abs(along) - 4 * Math.abs(up) });   // الانزياح على محور الوجه مسموح أكثر من الانزياح عموديًا (الحاجب فوق العين)
+    }
+    cand.sort((a, b) => b.score - a.score);
+    const keep = []; for (const q of cand) { if (keep.every(k => Math.hypot(k.x - q.x, k.y - q.y) > ri * 2.5)) keep.push(q); if (keep.length >= 4) break; }
+    sides.push(keep);
+  }
+  let best = null;
+  for (const a of sides[0]) for (const b of sides[1]) {
+    const vx = b.x - a.x, vy = b.y - a.y, dd = Math.hypot(vx, vy), tilt = Math.abs(vx * ux + vy * uy) / H;   // الفرق بين ارتفاعي العينين على محور الوجه
+    if (dd < H * .034 || dd > H * .056 || tilt > .0055) continue;
+    const sc = a.score + b.score - 800 * tilt; if (!best || sc > best.sc) best = { a, b, dd, sc };
+  }
+  if (!best && !m.weak) {   // احتياطي للرأس المائل (جلوس، التفات): ميل خط العينين قد لا يطابق ميل الفم. نجمع كل القزحيات المرشَّحة في نافذة أعرض ثم نبحث عن زوج بأي ميل معقول، شرط أن يقع فوق الفم بمسافة طبيعية
+    const pool = [], bx = Math.ceil(H * (EYE.dx + .03)), by = Math.ceil(H * .026);
+    for (let y = Math.round(ey - by); y <= ey + by; y++) for (let x = Math.round(ex - bx); x <= ex + bx; x++) {
+      const c = disc(x - x0, y - y0, 0, ri), ring = disc(x - x0, y - y0, ri * 2, ri * 3.2); if (c == null || ring == null || c > 125 || ring - c < 18) continue;
+      pool.push({ x, y, score: ring - c - 3 * Math.abs(y - ey) });
+    }
+    pool.sort((a, b) => b.score - a.score);
+    const keep = []; for (const q of pool) { if (keep.every(k => Math.hypot(k.x - q.x, k.y - q.y) > ri * 2.5)) keep.push(q); if (keep.length >= 8) break; }
+    for (const a of keep) for (const b of keep) {
+      if (b.x <= a.x) continue;
+      const vx = b.x - a.x, vy = b.y - a.y, dd = Math.hypot(vx, vy), th = Math.atan2(vy, vx); if (dd < H * .034 || dd > H * .056 || Math.abs(th) > .42) continue;   // ميل خط العينين حتى ~24°
+      const mx = (a.x + b.x) / 2 - m.x, my = (a.y + b.y) / 2 - m.y, upD = mx * Math.sin(th) - my * Math.cos(th), side = Math.abs(mx * Math.cos(th) + my * Math.sin(th));   // بُعد منتصف العينين فوق الفم على محور الوجه، وانحرافه جانبيًا
+      if (upD < H * .033 || upD > H * .05 || side > H * .03) continue;
+      const sc = a.score + b.score - 400 * Math.abs(upD / H - .0385) - 200 * side / H; if (!best || sc > best.sc) best = { a, b, dd, sc };
+    }
+  }
+  if (!best) return null;
+  const skin = q => {   // لون الجلد تحت العين مباشرة (وسيط ثلاث عينات): لون الجفن يتبع إضاءة هذه الجهة من الوجه لا إضاءة الفم
+    const R = [], G = [], B = [];
+    for (const [ox, oy] of [[0, 2.5], [-2.2, 2.2], [2.2, 2.2]]) {
+      const x = Math.round(q.x - x0 + ox * ri), y = Math.round(q.y - y0 + oy * ri); if (x < 0 || y < 0 || x >= W || y >= Hh) continue; const i = (y * W + x) * 4; if (d[i + 3] > 200) { R.push(d[i]); G.push(d[i + 1]); B.push(d[i + 2]); }
+    }
+    const med = a => { a.sort((u, v) => u - v); return a[a.length >> 1]; };
+    return R.length >= 2 ? [med(R), med(G), med(B)] : null;
+  };
+  return { lx: best.a.x, ly: best.a.y, rx: best.b.x, ry: best.b.y, d: best.dd, on: true, sk: [skin(best.a), skin(best.b)] };
+}
+function eyesAll(n) { const cfg = SH[n], fr = frames[n]; if (!fr) return; fr.forEach(f => { f.eyes = cfg.nm || cfg.ne ? null : findEyes(f); }); }
+
 function build(name) {
   const cfg = SH[name], P = parts[name];
   const pre = PRECUT[name]; delete PRECUT[name];
@@ -332,7 +402,7 @@ function build(name) {
     out.forEach(f => { let h = f.bb.y1 - f._ht; if (h < .93 * med) h = med; f._hr = h; f.mouth.y = f._ht + h * mk.y; f.mouth.w = h * mk.w; if (f.mouth.on) f.mouth.weak = !refineMouth(f); }); }   // weak = لم يُعثر على خط شفتين واضح: الموضع تقدير فقط ويحتاج مراجعة
   const hs = out.map(f => f.bb.y1 - f.bb.y0).sort((a, b) => a - b); out.ch = hs[hs.length >> 1] || 1;
   if (cfg.lift) out.forEach((f, i) => { f.lift = (cfg.lift[i] || 0) * out.ch; });
-  frames[name] = out; loadMouths(name);
+  frames[name] = out; loadMouths(name); eyesAll(name);
 }
 function trim(im) {
   const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;

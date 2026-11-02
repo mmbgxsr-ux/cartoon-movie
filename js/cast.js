@@ -96,7 +96,7 @@ function castLayer(g, f, c) {
 function castFrame(f, c) {
   const k = document.createElement('canvas'); k.width = f.width; k.height = f.height;
   const g = k.getContext('2d', { willReadFrequently: true }); g.drawImage(f, 0, 0);
-  ['bb', 'ax', 'hx', '_hx', '_ht', '_hr', 'm', 'lift', 'mouth'].forEach(p => { k[p] = f[p]; });
+  ['bb', 'ax', 'hx', '_hx', '_ht', '_hr', 'm', 'lift', 'mouth', 'eyes'].forEach(p => { k[p] = f[p]; });
   if (!f.bb || f._ht == null) return k;
   const T = hex3(c.top), B = hex3(c.bottom);
   if (T || B) {
@@ -126,9 +126,10 @@ function castArr(c, name, src) {
   let e = m[name]; if (!e || e.src !== src) { const arr = src.map(f => castFrame(f, c)); arr.ch = src.ch; e = m[name] = { src, arr }; }
   return e.arr;
 }
+const castSeed = id => { let h = 7; for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) % 1021; return h; };   // بذرة ثابتة لكل شخصية: ترمش في لحظات مختلفة عن غيرها
 function withCast(c, fn) {
-  const keys = Object.keys(frames), saved = {}; keys.forEach(k => { saved[k] = frames[k]; frames[k] = castArr(c, k, saved[k]); });
-  try { return fn(); } finally { keys.forEach(k => { frames[k] = saved[k]; }); }
+  const keys = Object.keys(frames), saved = {}, bs = BSEED; keys.forEach(k => { saved[k] = frames[k]; frames[k] = castArr(c, k, saved[k]); }); BSEED = c.id === 'guide' ? 0 : castSeed(c.id);
+  try { return fn(); } finally { keys.forEach(k => { frames[k] = saved[k]; }); BSEED = bs; }
 }
 
 // ----- الرسم: المتحدث يتحرك بالكامل، والباقون يستمعون بوضعية هادئة وفم مغلق -----
