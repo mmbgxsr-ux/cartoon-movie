@@ -34,6 +34,35 @@ function paintMouth(c2, f, sc, mx, my, st, alpha) {
   c2.lineWidth = mw * .065; c2.beginPath(); c2.moveTo(-a, -cl); c2.quadraticCurveTo(0, -cl + lh * 2 + mw * .02, a, -cl); c2.stroke();
   c2.restore();
 }
+// ===== رمش العين =====
+// جدول حتمي من الزمن والبذرة (لكل شخصية بذرة مختلفة فلا ترمش الشخصيات معًا)، فتتطابق المعاينة والتصدير تمامًا.
+// كل دورة 3.7–5.1 ثانية فيها رمشة في لحظة عشوائية، وفي ~22% من الدورات رمشة ثانية سريعة بعدها (كالرمش الحقيقي).
+function blinkAmt(tm, seed) {
+  const P = 3.7 + (seed % 7) * .23, k = Math.floor(tm / P), ph = tm - k * P, a = .25 + rn(k, seed + 1) * (P - .9), dbl = rn(k, seed + 2) < .22;
+  const one = x => x < 0 || x > .2 ? 0 : x < .07 ? ease(x / .07) : x < .1 ? 1 : 1 - ease((x - .1) / .1);   // إغلاق سريع ← لحظة ثبات ← فتح أبطأ قليلًا
+  return Math.max(one(ph - a), dbl ? one(ph - a - .27) : 0);
+}
+// الجفن: بيضاوي بلون جلد الجفن (نصف لون تحت العين ونصف لون الوجنة، كي لا يغمق في الجهة المظللة) ينزل من أعلى العين (ويتمدد مع الإغلاق)، بحواف ناعمة، وخط رموش رفيع عند حافته السفلى
+function paintBlink(c2, f, sc, amt) {
+  const e = f.eyes; if (!e || !e.on || amt < .04) return;
+  const base = tintSk(skinOf(f, f.mouth)), ew = e.d * .44 * sc, eh = e.d * .2 * sc, rot = Math.atan2(e.ry - e.ly, e.rx - e.lx), pts = [[e.lx, e.ly], [e.rx, e.ry]];
+  const col = (i, k) => { const q = e.sk && e.sk[i], t = q ? tintSk({ r: q[0], g: q[1], b: q[2], sig: '' }) : base, s = q ? { r: (t.r + base.r) / 2, g: (t.g + base.g) / 2, b: (t.b + base.b) / 2 } : base; return 'rgb(' + Math.round(s.r * k[0]) + ',' + Math.round(s.g * k[1]) + ',' + Math.round(s.b * k[2]) + ')'; };
+  const top = -eh * .62, hh = eh * 1.24 * amt;
+  c2.save(); if ('filter' in c2) c2.filter = 'blur(' + Math.max(.25, eh * .22).toFixed(2) + 'px)';
+  pts.forEach(([x, y], i) => {
+    c2.save(); c2.translate((x - f.ax) * sc, (y - f.bb.y1) * sc); c2.rotate(rot);
+    c2.fillStyle = col(i, [.97, .94, .92]); c2.beginPath(); c2.ellipse(0, top + hh / 2, ew * .55, hh / 2 + eh * .12, 0, 0, 7); c2.fill(); c2.restore();
+  });
+  c2.restore();
+  if (amt > .4) {   // الرموش: خط داكن رفيع بانحناءة خفيفة، خارج المرشّح كي لا يضيع بالتمويه
+    c2.save(); c2.lineCap = 'round'; c2.globalAlpha = Math.min(1, (amt - .4) * 1.7) * .6; c2.lineWidth = Math.max(.6, eh * .17);
+    pts.forEach(([x, y], i) => {
+      c2.save(); c2.translate((x - f.ax) * sc, (y - f.bb.y1) * sc); c2.rotate(rot); c2.strokeStyle = col(i, [.4, .32, .3]); const yy = top + hh - eh * .02;
+      c2.beginPath(); c2.moveTo(-ew * .46, yy - eh * .1); c2.quadraticCurveTo(0, yy + eh * .22, ew * .46, yy - eh * .1); c2.stroke(); c2.restore();
+    });
+    c2.restore();
+  }
+}
 function procMouth(tm) {
   const a = Math.abs(Math.sin(tm * 11 + Math.sin(tm * 2.7) * 2)), ph = .5 + .5 * Math.sin(tm * 1.9 + 1), gate = Math.sin(tm * .8 + .5) > -.9 ? 1 : .15;
   return Math.min(1, a * (.35 + .65 * ph) * 1.1) * gate;
@@ -157,6 +186,7 @@ function loadMouths(n) {
 }
 function saveMouths(n) {
   try { const all = JSON.parse(Store.getItem('mouths_v3') || '{}'); all[mkey(n)] = frames[n].map(f => f.mouth); Store.setItem('mouths_v3', JSON.stringify(all)); } catch (_) {}
+  eyesAll(n);   // مكان العينين يُحسب من الفم، فيُعاد حسابه كلما تغيّر الفم
 }
 function frameJpeg(f) {
   const k = Math.min(1, 448 / Math.max(f.width, f.height)), c = document.createElement('canvas'); c.width = Math.round(f.width * k); c.height = Math.round(f.height * k);
