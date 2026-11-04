@@ -237,12 +237,13 @@ function tickSim(dt) {
   $('info').textContent = 'المشهد ' + (idx + 1) + ' من ' + SHOTS.length + ' — ' + '\u2066' + fmt(el) + ' / ' + fmt(TOTAL) + '\u2069';
 }
 // عند عدم التشغيل لا حاجة لإعادة الرسم 60 مرة في الثانية: نرسم بسرعة (~20/ث) لثانية ونصف بعد أي لمس أو تغيير، ثم بمعدل بطيء (~2/ث)
-let IDLE_LAST = 0, IDLE_BOOST = 0;
+let IDLE_LAST = 0, IDLE_BOOST = 0, RECF_LAST = 0;
 ['input', 'change', 'pointerdown', 'pointerup', 'keydown', 'resize'].forEach(e => addEventListener(e, () => { IDLE_BOOST = performance.now() + 1500; }, true));
 function loop(now) {
   requestAnimationFrame(loop);   // أولًا: لو رمى tickSim استثناءً تبقى حلقة الرسم حيّة بدل أن تموت للأبد
   if (!playing && !EXPORTING && !QWAIT && !PERF.full && now - IDLE_LAST < (now < IDLE_BOOST ? 45 : 450)) return;
-  IDLE_LAST = now;
+  if (rec && rec.state === 'recording' && !EXPORTING && now - RECF_LAST < 30) return;   // أثناء التسجيل يلتقط المتصفح 30 إطارًا/ث فقط: لا داعي للرسم 60 مرة (يقلل الحمل والحرارة واحتمال إغلاق الصفحة)
+  RECF_LAST = now; IDLE_LAST = now;
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   if (!EXPORTING) {
     const pm = PERF.on && PERF.add ? performance.now() : 0;

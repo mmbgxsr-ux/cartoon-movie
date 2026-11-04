@@ -54,6 +54,37 @@ const Mp4 = (() => {
 })();
 
 let EXP_CANCEL = false;
+// سجل عمليات التصدير وأخطاء الصفحة (يدخل في «تقرير المشكلة»)
+const EXPLOG = { runs: [], errs: [] };
+addEventListener('error', e => { EXPLOG.errs.push(String(e.message || e).slice(0, 200)); if (EXPLOG.errs.length > 8) EXPLOG.errs.shift(); });
+addEventListener('unhandledrejection', e => { EXPLOG.errs.push('promise: ' + String((e.reason && e.reason.message) || e.reason).slice(0, 200)); if (EXPLOG.errs.length > 8) EXPLOG.errs.shift(); });
+// مشاركة الفيديو عبر قائمة مشاركة الجهاز (واتساب وغيره) حيث تتوفر: أسهل من التحميل ثم البحث عن الملف على الجوال
+function offerShare(blob, name) {
+  const b = $('bShare'); if (!b) return; b.hidden = true;
+  try {
+    const f = new File([blob], name, { type: 'video/mp4' });
+    if (!navigator.canShare || !navigator.canShare({ files: [f] })) return;
+    b.hidden = false; b.onclick = async () => { try { await navigator.share({ files: [f], title: 'الفيلم' }); } catch (e) { if (e && e.name !== 'AbortError') msg('تعذّرت المشاركة، استخدم رابط التحميل'); } };
+  } catch (_) {}
+}
+async function expReport() {
+  const q = id => { const el = $(id); return el ? (el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value) : '-'; };
+  let st = '-'; try { const u = await navigator.storage.estimate(); st = Math.round(u.usage / 1048576) + 'MB / ' + Math.round(u.quota / 1048576) + 'MB'; } catch (_) {}
+  const L = [
+    'تقرير تصدير — ' + new Date().toISOString(), 'المتصفح: ' + navigator.userAgent, 'الذاكرة (جيجابايت): ' + (navigator.deviceMemory || '?') + ' | الأنوية: ' + (navigator.hardwareConcurrency || '?') + ' | الشاشة: ' + screen.width + 'x' + screen.height + '@' + (devicePixelRatio || 1),
+    'الدعم: VideoEncoder=' + !!window.VideoEncoder + ' AudioEncoder=' + !!window.AudioEncoder + ' MediaRecorder=' + !!window.MediaRecorder + ' OfflineAudio=' + !!window.OfflineAudioContext + ' WakeLock=' + !!navigator.wakeLock + ' share=' + !!navigator.share,
+    'التخزين: ' + st + ' | persistent=' + (window.Store && Store.persistent), 'المشاريع: مشاهد=' + SHOTS.length + ' خلفيات=' + (typeof bgs !== 'undefined' ? bgs.length : '?') + ' مدة=' + (typeof TOTAL !== 'undefined' ? Math.round(TOTAL) : '?') + 'ث | لوحة=' + W + 'x' + H,
+    'الإعدادات: fps=' + q('sFps') + ' جودة=' + q('sQ') + ' مؤثرات: grade=' + q('cGrade') + ' old=' + q('cOld') + ' dof=' + q('cDof') + ' cam=' + q('cCam') + ' iris=' + q('cIris') + ' mood=' + q('cMood') + ' par=' + q('cPar') + ' rim=' + q('cRim') + ' holo=' + q('cHolo') + ' multi=' + q('cMulti'),
+    'آخر عمليات التصدير: ' + JSON.stringify(EXPLOG.runs), 'آخر الأخطاء: ' + JSON.stringify(EXPLOG.errs), 'الرسالة الحالية: ' + (($('msg') && $('msg').textContent) || '')
+  ];
+  return L.join('\n');
+}
+window.expReport = expReport;
+$('bRep').onclick = async () => {
+  const t = await expReport();
+  try { await navigator.clipboard.writeText(t); msg('تم نسخ تقرير المشكلة. ألصقه في رسالتك'); }
+  catch (_) { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;top:0;left:0;width:80%;height:40%;z-index:99;direction:ltr'; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (_) {} msg(ok ? 'تم نسخ تقرير المشكلة. ألصقه في رسالتك' : 'انسخ التقرير من المربع الظاهر'); if (ok) ta.remove(); else ta.onblur = () => ta.remove(); }
+};
 const yieldNow = (() => { const mc = new MessageChannel(); return () => new Promise(r => { mc.port1.onmessage = () => r(); mc.port2.postMessage(0); }); })();
 async function exportExact(opt) {
   opt = opt || {};
@@ -61,16 +92,27 @@ async function exportExact(opt) {
   if (!bgs.length) { msg('اختر الخلفيات أولاً'); return; }
   if (!window.VideoEncoder || !window.AudioEncoder || !window.OfflineAudioContext || !window.VideoFrame) { msg('متصفحك لا يدعم التصدير الدقيق؛ استخدم Chrome حديثًا أو زر «تحميل الفيديو»'); return; }
   if (!useGem()) { msg('التصدير الدقيق يحتاج الصوت المرفق أو مفتاح Gemini (صوت الجهاز الآلي لا يمكن التقاطه)'); return; }
-  busy = true; await EMBP; const okg = await genAll(opt.maxSec); busy = false; if (!okg) return; recalc();
-  const fps = +$('sFps').value || 30, TT = Math.min(TOTAL, opt.maxSec || TOTAL), N = Math.floor(TT * fps), SR = 48000, bitrate = +$('sQ').value || 1600000;
-  let vcfg = null; for (const c of ['avc1.640028', 'avc1.4d0028', 'avc1.42001f']) { const cfg = { codec: c, width: W, height: H, bitrate: Math.max(bitrate, fps > 30 ? 2500000 : 0), framerate: fps, avc: { format: 'avc' }, latencyMode: 'quality' }; try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) { vcfg = cfg; break; } } catch (_) {} }
+  fillRange(); const RF = Math.max(0, Math.min(SHOTS.length - 1, +$('sExpFrom').value || 0)), RT0 = +$('sExpTo').value, RT = RT0 < 0 ? SHOTS.length - 1 : Math.max(RF, Math.min(SHOTS.length - 1, RT0)), ranged = RF > 0 || RT < SHOTS.length - 1;   // نطاق المشاهد المراد تصديرها
+  busy = true; await EMBP; const okg = await genAll(opt.maxSec, RF, RT); busy = false; if (!okg) return; recalc();
+  let RANGE_T = 0; for (let k = RF; k <= RT; k++) RANGE_T += SHOTS[k].dur;
+  const fps = +$('sFps').value || 30, TT = Math.min(RANGE_T, opt.maxSec || RANGE_T), N = Math.floor(TT * fps), SR = 48000, bitrate = +$('sQ').value || 1600000;
+  let vcfg = null; for (const hw of (opt._sw ? ['no-preference'] : ['prefer-hardware', 'no-preference'])) { for (const c of ['avc1.640028', 'avc1.4d0028', 'avc1.42001f']) { const cfg = { codec: c, width: W, height: H, bitrate: Math.max(bitrate, fps > 30 ? 2500000 : 0), framerate: fps, avc: { format: 'avc' }, latencyMode: 'quality', hardwareAcceleration: hw }; try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) { vcfg = cfg; break; } } catch (_) {} } if (vcfg) break; }   // الأفضلية لمشفّر العتاد (أسرع بكثير)
   if (!vcfg) { msg('هذا الجهاز لا يوفّر ضغط H.264 عبر المتصفح؛ استخدم زر «تحميل الفيديو»'); return; }
   let acfg = null, akind = 'aac'; for (const [c, k] of [['mp4a.40.2', 'aac'], ['opus', 'opus']]) { const cfg = { codec: c, sampleRate: SR, numberOfChannels: 2, bitrate: 128000 }; try { if ((await AudioEncoder.isConfigSupported(cfg)).supported) { acfg = cfg; akind = k; break; } } catch (_) {} }
   if (!acfg) { msg('هذا الجهاز لا يوفّر ضغط الصوت؛ استخدم زر «تحميل الفيديو»'); return; }
+  const LG = { t: new Date().toISOString(), preview: !!opt.preview, scenes: (RF + 1) + '-' + (RT + 1) + '/' + SHOTS.length, sec: +TT.toFixed(1), fps, size: W + 'x' + H, bitrate: vcfg.bitrate, codec: vcfg.codec, hw: vcfg.hardwareAcceleration, audio: akind, softwareRetry: !!opt._sw };
+  EXPLOG.runs.push(LG); if (EXPLOG.runs.length > 5) EXPLOG.runs.shift();
+  // فحص قبل البدء: التصدير يحتفظ بالفيديو المضغوط كله في الذاكرة ثم ينسخه عند الدمج (قمة الذاكرة نحو ضعف الحجم)، فننبّه قبل أن يغلق المتصفح الصفحة
+  if (!opt.preview) {
+    const bps = vcfg.bitrate + acfg.bitrate, estMB = bps * TT / 8 / 1048576, limMB = Math.min(700, (navigator.deviceMemory || 4) * 100), warn = [];
+    if (estMB * 2 > limMB) warn.push('الحجم المتوقع نحو ' + Math.round(estMB) + ' ميجابايت وقد تحتاج الذاكرة ضعفه تقريبًا، وجهازك قد لا يحتمل ذلك');
+    if (fps > 30 && TT > 180) warn.push('60 إطارًا/ث لفيلم طوله أكثر من 3 دقائق يطيل التصدير كثيرًا');
+    if (warn.length && !confirm('تنبيه قبل التصدير:\n• ' + warn.join('\n• ') + '\n\nالأفضل: خفّض الجودة أو اجعلها 30 إطارًا/ث أو صدّر على أجزاء بتحديد «من مشهد / إلى مشهد».\nهل تتابع رغم ذلك؟')) { msg('أُلغي التصدير'); return; }
+  }
   // حالة حيّة تُحفَظ ثم تُستعاد
   const S = { AC, DEST, AN, AMB, cur, noise: SFX.noise, ls: SFX.lastStep, lc: SFX.lastC, st: window.setTimeout, ct: window.clearTimeout, idx, t, MOOD };
   const mux = new Mp4({ w: W, h: H, fps, sr: SR, ch: 2, audio: akind });
-  let err = null, venc = null, XT = 0, vq = [], vid = 1e9, off = null, t0 = performance.now();
+  let retrySw = false, err = null, venc = null, XT = 0, vq = [], vid = 1e9, off = null, t0 = performance.now();
   const btn = $(opt.btnId || 'bExp'), label = btn.textContent; btn.textContent = '⏹ إلغاء التصدير'; EXP_CANCEL = false;
   try {
     venc = new VideoEncoder({ output: (c, m) => mux.addVideo(c, m), error: e => { err = e; } }); venc.configure(vcfg);
@@ -82,15 +124,15 @@ async function exportExact(opt) {
     window.clearTimeout = id => { vq = vq.filter(x => x.id !== id); };
     const runDue = () => { for (;;) { let k = -1; for (let i = 0; i < vq.length; i++) if (vq[i].at <= XT && (k < 0 || vq[i].at < vq[k].at)) k = i; if (k < 0) break; const e = vq.splice(k, 1)[0]; try { e.fn(); } catch (_) {} } };
     SHOTS.forEach(x => { x.speaking = false; x.done = false; x.hold = 0; x.ci = -1; x._a0 = null; x._bn = null; });
-    idx = 0; t = 0; spoken = false; playing = true; EXPORTING = true; EXP_END = false; MOOD = 0; clock = 0; wlOn(); ambStart();
+    idx = RF; t = 0; spoken = false; playing = true; EXPORTING = true; EXP_END = false; MOOD = 0; clock = 0; wlOn(); ambStart();
     let done = 0;
     for (let i = 0; i < N; i++) {
       XT = i / fps; runDue(); tickSim(i === 0 ? 0 : 1 / fps); if (EXP_END) break;
       const vf = new VideoFrame(cv, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
-      while (venc.encodeQueueSize > 8 && !err) await yieldNow();
+      while (venc.encodeQueueSize > 24 && !err) await yieldNow();
       if (err) { vf.close(); throw err; }
       venc.encode(vf, { keyFrame: i % (fps * 2) === 0 }); vf.close(); done = i + 1;
-      if (i % 5 === 0) {
+      if (i % 10 === 0) {
         const el = (performance.now() - t0) / 1000, rem = el / Math.max(1, i) * (N - i);
         msg('تصدير دقيق: ' + Math.round(i / N * 100) + '٪ — المتبقي نحو ' + (rem > 90 ? Math.ceil(rem / 60) + ' دقيقة' : Math.ceil(rem) + ' ثانية') + ' (أبقِ الشاشة مضاءة)');
         await yieldNow(); if (EXP_CANCEL) throw new Error('cancel');
@@ -103,26 +145,41 @@ async function exportExact(opt) {
     const ab = await off.startRendering(), vdur = done / fps, total = Math.min(ab.length, Math.ceil(vdur * SR));
     let aerr = null; const aenc = new AudioEncoder({ output: (c, m) => mux.addAudio(c, m), error: e => { aerr = e; } }); aenc.configure(acfg);
     const c0 = ab.getChannelData(0), c1 = ab.getChannelData(1), B = 4800;
+    let peak = 0; for (let k = 0; k < total; k += 8) { const v = Math.abs(c0[k]); if (v > peak) peak = v; }   // لفحص النتيجة: هل الصوت صامت؟
     for (let p = 0; p < total; p += B) {
       const n = Math.min(B, total - p), d = new Float32Array(2 * n); d.set(c0.subarray(p, p + n), 0); d.set(c1.subarray(p, p + n), n);
       const ad = new AudioData({ format: 'f32-planar', sampleRate: SR, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(p * 1e6 / SR), data: d }); aenc.encode(ad); ad.close();
       if (aerr) throw aerr; if ((p / B) % 20 === 0) await yieldNow();
     }
     await aenc.flush(); if (aerr) throw aerr;
-    const blob = mux.finish(), a = $('dl'), url = URL.createObjectURL(blob), note = akind === 'opus' ? ' — الصوت بصيغة Opus لأن جهازك لا يضغط AAC' : '';
-    a.href = url; a.download = opt.preview ? 'preview.mp4' : 'movie.mp4'; a.textContent = opt.preview ? 'تحميل المعاينة (MP4)' : 'تحميل الفيديو (MP4 دقيق)';
+    const blob = mux.finish(), a = $('dl'); if (a.dataset.url && !opt.preview) { try { URL.revokeObjectURL(a.dataset.url); } catch (_) {} } const url = URL.createObjectURL(blob); if (!opt.preview) a.dataset.url = url; a.target = '_blank'; a.rel = 'noopener'; const note = akind === 'opus' ? ' — الصوت بصيغة Opus لأن جهازك لا يضغط AAC' : '';
+    // فحص تلقائي للنتيجة: نخبرك فورًا إن خرج الفيديو ناقصًا أو بلا صوت بدل اكتشاف ذلك بعد التحميل
+    const chk = []; if (mux.v.length !== done) chk.push('عدد إطارات الفيديو ' + mux.v.length + ' بدل ' + done); if (!mux.a.length) chk.push('لا يوجد مقطع صوت'); else if (peak < .002) chk.push('الصوت صامت تقريبًا، تحقق من ملفات الصوت'); if (blob.size < 5000) chk.push('الملف صغير جدًا');
+    const chkTxt = chk.length ? ' — ⚠️ تنبيه: ' + chk.join('، ') : ''; LG.result = { bytes: blob.size, frames: mux.v.length, audioChunks: mux.a.length, peak: +peak.toFixed(3), warnings: chk };
+    a.href = url; a.download = opt.preview ? 'preview.mp4' : (ranged ? 'movie_s' + (RF + 1) + '-' + (RT + 1) + '.mp4' : 'movie.mp4'); a.textContent = opt.preview ? 'تحميل المعاينة (MP4)' : 'تحميل الفيديو (MP4 دقيق)';
     if (opt.onBlob) opt.onBlob(blob);
     if (opt.preview) {   // تجريبي: نعرضه هنا للفحص ولا نبدأ تحميلًا
       const v = $('expPrev'); if (v) { if (v.dataset.url) URL.revokeObjectURL(v.dataset.url); v.dataset.url = url; v.src = url; v.hidden = false; }
-      msg('تم التصدير التجريبي (' + (done / fps).toFixed(1) + ' ثانية، ' + (blob.size / 1048576).toFixed(1) + ' ميجابايت). افحص الجودة والتزامن أدناه قبل التصدير الكامل' + note);
-    } else { msg('تم التصدير (' + (blob.size / 1048576).toFixed(1) + ' ميجابايت)' + note); a.click(); }
+      msg('تم التصدير التجريبي (' + (done / fps).toFixed(1) + ' ثانية، ' + (blob.size / 1048576).toFixed(1) + ' ميجابايت). افحص الجودة والتزامن أدناه قبل التصدير الكامل' + note + chkTxt);
+    } else { msg('تم التصدير (' + (blob.size / 1048576).toFixed(1) + ' ميجابايت)' + note + chkTxt); offerShare(blob, a.download); a.click(); }
   } catch (e) {
-    msg(e && e.message === 'cancel' ? 'أُلغي التصدير' : 'تعذّر التصدير: ' + (e && e.message ? e.message : e)); console.error(e);
+    try { LG.error = String(e && e.message || e).slice(0, 300); } catch (_) {}
+    if (vcfg.hardwareAcceleration === 'prefer-hardware' && !opt._sw && !(e && e.message === 'cancel') && !EXP_CANCEL) { retrySw = true; msg('مشفّر العتاد لم يعمل على هذا الجهاز، نعيد التصدير بالمشفّر البرمجي (أبطأ لكنه أضمن)…'); console.warn('hw encoder failed, retrying in software', e); }
+    else msg(e && e.message === 'cancel' ? 'أُلغي التصدير' : 'تعذّر التصدير: ' + (e && e.message ? e.message : e)); if (!retrySw) console.error(e);
   } finally {
     window.setTimeout = S.st; window.clearTimeout = S.ct; EXPORTING = false; playing = false; try { venc && venc.state !== 'closed' && venc.close(); } catch (_) {}
     AC = S.AC; DEST = S.DEST; AN = S.AN; AMB = S.AMB; cur = S.cur; SFX.noise = S.noise; SFX.lastStep = S.ls; SFX.lastC = S.lc; idx = 0; t = 0; spoken = false; MOOD = 0; wlOff(); btn.textContent = label;
   }
+  if (retrySw) return exportExact(Object.assign({}, opt, { _sw: true }));
 }
+// نطاق التصدير: من مشهد إلى مشهد (لإعادة تصدير جزء معدَّل أو تقسيم فيلم طويل). يُحدَّث الاختيار إن تغيّرت المشاهد من المحرر
+function fillRange() {
+  const a = $('sExpFrom'), b = $('sExpTo'); if (!a || !b) return; const n = SHOTS.length; if (a.options.length === n && b.options.length === n + 1) return;
+  const fv = a.value || '0', tv = b.value || '-1'; a.innerHTML = ''; b.innerHTML = ''; b.add(new Option('إلى آخر الفيلم', '-1'));
+  SHOTS.forEach((s, i) => { const lab = (i + 1) + '. ' + (s.h || ''); a.add(new Option('من مشهد ' + lab, String(i))); b.add(new Option('إلى مشهد ' + lab, String(i))); });
+  a.value = +fv < n ? fv : '0'; b.value = +tv < n ? tv : '-1';
+}
+fillRange(); ['sExpFrom', 'sExpTo'].forEach(id => { const el = $(id); if (el) { el.addEventListener('focus', fillRange); el.addEventListener('pointerdown', fillRange); } });
 $('bExp').onclick = () => exportExact();
 // تصدير تجريبي: أول 5 ثوانٍ بنفس الإعدادات، يظهر في مشغّل داخل الصفحة. الضغط عليه أثناء أي تصدير يلغيه كالزر الأصلي
 $('bExpTest').onclick = () => exportExact({ maxSec: 5, preview: true, btnId: 'bExpTest' });

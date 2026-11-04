@@ -63,6 +63,14 @@
     });
     wc.cur = 0; wcGrid(); wcDraw(); $('lWc').classList.add('ok'); say('مثال تخطيطي لاختبار التوقيت. ارفع صور شخصيتك للنتيجة الفعلية.');
   };
+  $('wcReal').onclick = async () => {   // دورة مشي واقعية مدمجة: تُحمَّل في الاستوديو ثم «استخدمها»
+    wcStop(); say('جاري تحميل الدورة الجاهزة …');
+    try {
+      const out = [];
+      for (let i = 0; i < WALKPRESET.length; i++) { const im = new Image(); im.src = WALKPRESET[i]; await im.decode(); out.push({ img: im, name: 'real-' + (i + 1) }); }
+      wc.fr = out; wc.cur = 0; wcGrid(); wcDraw(); $('lWc').classList.add('ok'); say('تم تحميل دورة واقعية من ' + out.length + ' إطارات. شغّل المعاينة ثم اضغط «استخدمها».');
+    } catch (_) { say('تعذّر تحميل الدورة الجاهزة'); }
+  };
   $('wcUse').onclick = async () => {
     const n = wc.fr.length;
     if (n < 3) { say('أضف 3 إطارات على الأقل: من 3 إلى 5 = ذهاب وإياب، ومن 6 فأكثر = دورة كاملة.'); return; }

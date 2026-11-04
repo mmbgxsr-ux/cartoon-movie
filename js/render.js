@@ -62,7 +62,7 @@ function rimOf(f) {
     const d2 = Math.max(3, f.height * .0075); if ('filter' in q) q.filter = 'blur(' + (d2 * .5).toFixed(1) + 'px)';
     q.globalCompositeOperation = 'destination-out'; q.drawImage(f, (L >= 0 ? -1 : 1) * d2, 0); q.filter = 'none';
     q.globalCompositeOperation = 'source-in'; q.fillStyle = 'rgba(' + Math.round((A.r + Sk.r) / 2) + ',' + Math.round((A.g + Sk.g) / 2) + ',' + Math.round((A.b + Sk.b) / 2) + ',.5)'; q.fillRect(0, 0, w.width, w.height);
-    g.globalCompositeOperation = 'source-over'; g.drawImage(w, 0, 0);
+    g.globalCompositeOperation = 'source-over'; g.drawImage(w, 0, 0); w.width = w.height = 0;   // تحرير اللوحة المؤقتة فورًا (تتراكم أثناء التسجيل وتُنهي ذاكرة الجوال)
   }
   f._rim = { key, c }; return c;
 }

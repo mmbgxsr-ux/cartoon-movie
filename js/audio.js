@@ -44,11 +44,19 @@ async function genLines(s) {
   const buf = ac().createBuffer(1, n, R), ch = buf.getChannelData(0); for (let i = 0; i < n; i++) ch[i] = pcm[i] / 32768;
   s.pcm = pcm; s.abuf = buf; s.adur = buf.duration; s.lineT = T;
 }
-async function genAll(maxSec) {   // maxSec (اختياري): نتوقف عن توليد الصوت بعد هذا الزمن من الفيلم (للتصدير التجريبي)
+async function genAll(maxSec, from, to) {   // maxSec (اختياري): نتوقف عن توليد الصوت بعد هذا الزمن من الفيلم (للتصدير التجريبي)
   if (EMBON() || !gemKey() || !$('cTts').checked) return true; ac(); const vo1 = s => (typeof voiceOf === 'function' && voiceOf(s)) || $('sGv').value, vk = s => (s.lines && s.lines.length ? s.lines.map(L => vo1({ spk: L.spk }) + '|' + L.t).join('¦') : vo1(s)) + $('sGm').value;
   try {
+    if (!maxSec) {   // توليد متوازٍ (3 طلبات معًا): أسرع بكثير من المشاهد واحدًا بعد الآخر، وإعادة المحاولة عند حد الطلبات موجودة في gen()
+      const todo = []; SHOTS.forEach((s, i) => { if ((from == null || i >= from) && (to == null || i <= to) && !(s.abuf && s.gk === vk(s))) todo.push(i); });
+      let nx = 0, fin = 0; msg('جاري توليد الصوت 0 من ' + todo.length + ' …');
+      await Promise.all([0, 1, 2].map(async () => {
+        while (nx < todo.length) { const s = SHOTS[todo[nx++]], v = vk(s); await (s.lines && s.lines.length ? genLines(s) : gen(s)); s.gk = v; fin++; msg('جاري توليد الصوت ' + fin + ' من ' + todo.length + ' …'); }
+      }));
+      msg(''); recalc(); return true;
+    }
     let acc = 0;
-    for (let i = 0; i < SHOTS.length; i++) {
+    for (let i = from || 0; i < (to == null ? SHOTS.length : to + 1); i++) {
       if (maxSec && acc >= maxSec) break;
       const s = SHOTS[i], v = vk(s);
       if (!(s.abuf && s.gk === v)) { msg('جاري توليد الصوت ' + (i + 1) + ' من ' + SHOTS.length + ' …'); await (s.lines && s.lines.length ? genLines(s) : gen(s)); s.gk = v; await sleep(800); }
@@ -121,9 +129,16 @@ function startRec() {
   chunksRec = []; const cands = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp9', 'video/webm'];
   const mt = cands.find(c => MediaRecorder.isTypeSupported(c)) || 'video/webm'; recExt = mt.startsWith('video/mp4') ? 'mp4' : 'webm'; recMime = recExt === 'mp4' ? 'video/mp4' : 'video/webm';
   if (recExt !== 'mp4') msg('متصفحك لا يدعم تسجيل MP4 مباشرة، سيُحفظ الفيديو بصيغة WebM — جرّب Chrome حديثًا أو Safari للحصول على MP4');
-  const st = cv.captureStream(30); if (DEST) DEST.stream.getAudioTracks().forEach(k => st.addTrack(k)); rec = new MediaRecorder(st, { mimeType: mt, videoBitsPerSecond: +$('sQ').value || 900000, audioBitsPerSecond: (+$('sQ').value >= 4000000 ? 128000 : 64000) });
-  rec.ondataavailable = e => chunksRec.push(e.data);
-  rec.onstop = () => { const a = $('dl'); a.href = URL.createObjectURL(new Blob(chunksRec, { type: recMime })); a.download = 'movie.' + recExt; a.textContent = 'تحميل الفيديو (' + recExt.toUpperCase() + ')'; if (autoDl) { autoDl = false; msg('تم إنهاء التسجيل وبدأ التحميل'); a.click(); } };
+  const st = cv.captureStream(30); if (DEST) DEST.stream.getAudioTracks().forEach(k => st.addTrack(k)); rec = new MediaRecorder(st, { mimeType: mt, videoBitsPerSecond: Math.min(5000000, +$('sQ').value || 900000), audioBitsPerSecond: (+$('sQ').value >= 4000000 ? 128000 : 64000) });
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunksRec.push(e.data); };
+  rec.onerror = () => { autoDl = false; try { stopAll(); } catch (_) {} msg('توقف التسجيل بسبب خطأ في المتصفح. جرّب جودة أقل أو أعد المحاولة'); };
+  rec.onstop = () => {
+    const a = $('dl'); if (a.dataset.url) { try { URL.revokeObjectURL(a.dataset.url); } catch (_) {} }   // نحرّر فيديو التسجيل السابق من الذاكرة
+    const url = URL.createObjectURL(new Blob(chunksRec, { type: recMime })); chunksRec = []; a.dataset.url = url;
+    a.href = url; a.download = 'movie.' + recExt; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'تحميل الفيديو (' + recExt.toUpperCase() + ')';
+    // target=_blank: إن لم يدعم المتصفح التحميل التلقائي يُفتح الفيديو في تبويب جديد بدل أن تُستبدل صفحة التطبيق به (كان ذلك يبدو كخروج من المتصفح)
+    if (autoDl) { autoDl = false; msg('تم إنهاء التسجيل وبدأ التحميل. إن لم يبدأ فاضغط «تحميل الفيديو»'); try { a.click(); } catch (_) {} }
+  };
   rec.start(1000);
 }
 function stopAll() { hideQ(); wlOff(); ambStop(); playing = false; $('bPlay').textContent = 'تشغيل'; $('bPlay').classList.remove('on'); if (window.speechSynthesis) speechSynthesis.cancel(); try { cur && cur.stop(); } catch (_) {} if (rec && rec.state !== 'inactive') rec.stop(); rec = null; }
