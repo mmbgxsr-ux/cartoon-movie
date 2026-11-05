@@ -3,6 +3,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'self' blob: data: https://generativelanguage.googleapis.com">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>صانع الأفلام الكرتونية v55 (بالمصري + صوت Gemini)</title>
 <link rel="stylesheet" href="css/styles.css">
@@ -146,6 +147,6 @@
 <script src="js/storage.js"></script>
 <script>
 const FILES=["js/core.js", "js/safety.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/weather.js", "js/export.js", "js/guard.js", "js/settings.js", "assets/shimg.js", "assets/walkpreset.js", "js/framecache.js", "js/backgrounds.js", "js/cast.js", "js/hologram.js", "js/decision.js", "js/perf.js", "js/timeline.js", "js/topplay.js", "js/project.js", "js/package.js", "js/editor.js", "js/worlds.js", "js/packs.js", "js/tabs.js", "js/a11y.js"];
-Store.init().then(()=>{FILES.forEach(f=>{const s=document.createElement('script');s.src=f;s.async=false;s.onerror=()=>{document.getElementById('msg').textContent='تعذّر تحميل '+f;const b=document.getElementById('boot');if(b)b.remove();};document.body.appendChild(s);});});
+Store.init().catch(e=>console.error(e)).then(()=>{FILES.forEach(f=>{const s=document.createElement('script');s.src=f;s.async=false;s.onerror=()=>{document.getElementById('msg').textContent='تعذّر تحميل '+f;const b=document.getElementById('boot');if(b)b.remove();};document.body.appendChild(s);});});
 </script>
 </body></html>
