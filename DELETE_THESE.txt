@@ -1,0 +1,2 @@
+احذف هذا الملف من المستودع:
+git rm tests/walkpreset.js
