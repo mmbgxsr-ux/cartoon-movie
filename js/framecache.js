@@ -26,7 +26,7 @@ const FCACHE = (function () {
         const fr = frames[n]; if (!fr || !fr.length) return; const k = key(n), rows = [];
         for (const f of fr) { const b = await new Promise(r => f.toBlob(r, 'image/webp', 1)); if (!b) return; rows.push({ b, w: f.width, h: f.height, m: f.m }); }
         const db = await open(); await req(db.transaction(ST, 'readwrite').objectStore(ST).put({ n, key: k, frames: rows })); db.close();
-      } catch (_) {}
+      } catch (_) { dbg(_); }
     }, 4000);
   }
   return { load, save, get hits() { return hits; } };

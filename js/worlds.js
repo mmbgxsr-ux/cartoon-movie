@@ -81,7 +81,7 @@
   const fillWorlds = () => { world.innerHTML = ''; worldsOf().forEach(k => world.appendChild(el('option', { value: k, textContent: WORLDS[k].name }))); desc.textContent = world.value ? WORLDS[world.value].desc : ''; };
   subj.onchange = fillWorlds; world.onchange = () => { desc.textContent = WORLDS[world.value].desc; }; fillWorlds();
   const showPlan = txt => { plan.style.display = txt ? 'block' : 'none'; plan.textContent = txt ? 'ارفع الخلفيات بهذا الترتيب (تبويب الخلفيات):\n' + txt : ''; };
-  try { showPlan(Store.getItem(PLAN_K) || ''); } catch (_) {}
+  try { showPlan(Store.getItem(PLAN_K) || ''); } catch (_) { dbg(_); }
   const go = el('button', { type: 'button', textContent: '✨ إنشاء هيكل الدرس', style: 'background:#245a36', onclick() {
     if (!title.value.trim()) { say('اكتب عنوان الدرس أولًا'); return; }
     if (!confirm('سيُستبدل محتوى المحرر الحالي بهيكل الدرس الجديد. متابعة؟')) return;

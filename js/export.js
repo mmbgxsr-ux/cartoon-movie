@@ -65,11 +65,11 @@ function offerShare(blob, name) {
     const f = new File([blob], name, { type: 'video/mp4' });
     if (!navigator.canShare || !navigator.canShare({ files: [f] })) return;
     b.hidden = false; b.onclick = async () => { try { await navigator.share({ files: [f], title: 'الفيلم' }); } catch (e) { if (e && e.name !== 'AbortError') msg('تعذّرت المشاركة، استخدم رابط التحميل'); } };
-  } catch (_) {}
+  } catch (_) { dbg(_); }
 }
 async function expReport() {
   const q = id => { const el = $(id); return el ? (el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value) : '-'; };
-  let st = '-'; try { const u = await navigator.storage.estimate(); st = Math.round(u.usage / 1048576) + 'MB / ' + Math.round(u.quota / 1048576) + 'MB'; } catch (_) {}
+  let st = '-'; try { const u = await navigator.storage.estimate(); st = Math.round(u.usage / 1048576) + 'MB / ' + Math.round(u.quota / 1048576) + 'MB'; } catch (_) { dbg(_); }
   const L = [
     'تقرير تصدير — ' + new Date().toISOString(), 'المتصفح: ' + navigator.userAgent, 'الذاكرة (جيجابايت): ' + (navigator.deviceMemory || '?') + ' | الأنوية: ' + (navigator.hardwareConcurrency || '?') + ' | الشاشة: ' + screen.width + 'x' + screen.height + '@' + (devicePixelRatio || 1),
     'الدعم: VideoEncoder=' + !!window.VideoEncoder + ' AudioEncoder=' + !!window.AudioEncoder + ' MediaRecorder=' + !!window.MediaRecorder + ' OfflineAudio=' + !!window.OfflineAudioContext + ' WakeLock=' + !!navigator.wakeLock + ' share=' + !!navigator.share,
@@ -83,7 +83,7 @@ window.expReport = expReport;
 $('bRep').onclick = async () => {
   const t = await expReport();
   try { await navigator.clipboard.writeText(t); msg('تم نسخ تقرير المشكلة. ألصقه في رسالتك'); }
-  catch (_) { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;top:0;left:0;width:80%;height:40%;z-index:99;direction:ltr'; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (_) {} msg(ok ? 'تم نسخ تقرير المشكلة. ألصقه في رسالتك' : 'انسخ التقرير من المربع الظاهر'); if (ok) ta.remove(); else ta.onblur = () => ta.remove(); }
+  catch (_) { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;top:0;left:0;width:80%;height:40%;z-index:99;direction:ltr'; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (_) { dbg(_); } msg(ok ? 'تم نسخ تقرير المشكلة. ألصقه في رسالتك' : 'انسخ التقرير من المربع الظاهر'); if (ok) ta.remove(); else ta.onblur = () => ta.remove(); }
 };
 const yieldNow = (() => { const mc = new MessageChannel(); return () => new Promise(r => { mc.port1.onmessage = () => r(); mc.port2.postMessage(0); }); })();
 async function exportExact(opt) {
@@ -96,9 +96,9 @@ async function exportExact(opt) {
   busy = true; await EMBP; const okg = await genAll(opt.maxSec, RF, RT); busy = false; if (!okg) return; recalc();
   let RANGE_T = 0; for (let k = RF; k <= RT; k++) RANGE_T += SHOTS[k].dur;
   const fps = +$('sFps').value || 30, TT = Math.min(RANGE_T, opt.maxSec || RANGE_T), N = Math.floor(TT * fps), SR = 48000, bitrate = +$('sQ').value || 1600000;
-  let vcfg = null; for (const hw of (opt._sw ? ['no-preference'] : ['prefer-hardware', 'no-preference'])) { for (const c of ['avc1.640028', 'avc1.4d0028', 'avc1.42001f']) { const cfg = { codec: c, width: W, height: H, bitrate: Math.max(bitrate, fps > 30 ? 2500000 : 0), framerate: fps, avc: { format: 'avc' }, latencyMode: 'quality', hardwareAcceleration: hw }; try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) { vcfg = cfg; break; } } catch (_) {} } if (vcfg) break; }   // الأفضلية لمشفّر العتاد (أسرع بكثير)
+  let vcfg = null; for (const hw of (opt._sw ? ['no-preference'] : ['prefer-hardware', 'no-preference'])) { for (const c of ['avc1.640028', 'avc1.4d0028', 'avc1.42001f']) { const cfg = { codec: c, width: W, height: H, bitrate: Math.max(bitrate, fps > 30 ? 2500000 : 0), framerate: fps, avc: { format: 'avc' }, latencyMode: 'quality', hardwareAcceleration: hw }; try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) { vcfg = cfg; break; } } catch (_) { dbg(_); } } if (vcfg) break; }   // الأفضلية لمشفّر العتاد (أسرع بكثير)
   if (!vcfg) { msg('هذا الجهاز لا يوفّر ضغط H.264 عبر المتصفح؛ استخدم زر «تحميل الفيديو»'); return; }
-  let acfg = null, akind = 'aac'; for (const [c, k] of [['mp4a.40.2', 'aac'], ['opus', 'opus']]) { const cfg = { codec: c, sampleRate: SR, numberOfChannels: 2, bitrate: 128000 }; try { if ((await AudioEncoder.isConfigSupported(cfg)).supported) { acfg = cfg; akind = k; break; } } catch (_) {} }
+  let acfg = null, akind = 'aac'; for (const [c, k] of [['mp4a.40.2', 'aac'], ['opus', 'opus']]) { const cfg = { codec: c, sampleRate: SR, numberOfChannels: 2, bitrate: 128000 }; try { if ((await AudioEncoder.isConfigSupported(cfg)).supported) { acfg = cfg; akind = k; break; } } catch (_) { dbg(_); } }
   if (!acfg) { msg('هذا الجهاز لا يوفّر ضغط الصوت؛ استخدم زر «تحميل الفيديو»'); return; }
   const LG = { t: new Date().toISOString(), preview: !!opt.preview, scenes: (RF + 1) + '-' + (RT + 1) + '/' + SHOTS.length, sec: +TT.toFixed(1), fps, size: W + 'x' + H, bitrate: vcfg.bitrate, codec: vcfg.codec, hw: vcfg.hardwareAcceleration, audio: akind, softwareRetry: !!opt._sw };
   EXPLOG.runs.push(LG); if (EXPLOG.runs.length > 5) EXPLOG.runs.shift();
@@ -122,7 +122,7 @@ async function exportExact(opt) {
     // ساعة افتراضية للمؤقتات (طيور الخلفية والنار وتغيّر الوتر) حتى تتبع زمن الفيلم لا الزمن الحقيقي
     window.setTimeout = (fn, ms) => { const id = ++vid; vq.push({ id, at: XT + (ms || 0) / 1000, fn }); return id; };
     window.clearTimeout = id => { vq = vq.filter(x => x.id !== id); };
-    const runDue = () => { for (;;) { let k = -1; for (let i = 0; i < vq.length; i++) if (vq[i].at <= XT && (k < 0 || vq[i].at < vq[k].at)) k = i; if (k < 0) break; const e = vq.splice(k, 1)[0]; try { e.fn(); } catch (_) {} } };
+    const runDue = () => { for (;;) { let k = -1; for (let i = 0; i < vq.length; i++) if (vq[i].at <= XT && (k < 0 || vq[i].at < vq[k].at)) k = i; if (k < 0) break; const e = vq.splice(k, 1)[0]; try { e.fn(); } catch (_) { dbg(_); } } };
     SHOTS.forEach(x => { x.speaking = false; x.done = false; x.hold = 0; x.ci = -1; x._a0 = null; x._bn = null; });
     idx = RF; t = 0; spoken = false; playing = true; EXPORTING = true; EXP_END = false; MOOD = 0; clock = 0; wlOn(); ambStart();
     let done = 0;
@@ -152,7 +152,7 @@ async function exportExact(opt) {
       if (aerr) throw aerr; if ((p / B) % 20 === 0) await yieldNow();
     }
     await aenc.flush(); if (aerr) throw aerr;
-    const blob = mux.finish(), a = $('dl'); if (a.dataset.url && !opt.preview) { try { URL.revokeObjectURL(a.dataset.url); } catch (_) {} } const url = URL.createObjectURL(blob); if (!opt.preview) a.dataset.url = url; a.target = '_blank'; a.rel = 'noopener'; const note = akind === 'opus' ? ' — الصوت بصيغة Opus لأن جهازك لا يضغط AAC' : '';
+    const blob = mux.finish(), a = $('dl'); if (a.dataset.url && !opt.preview) { try { URL.revokeObjectURL(a.dataset.url); } catch (_) { dbg(_); } } const url = URL.createObjectURL(blob); if (!opt.preview) a.dataset.url = url; a.target = '_blank'; a.rel = 'noopener'; const note = akind === 'opus' ? ' — الصوت بصيغة Opus لأن جهازك لا يضغط AAC' : '';
     // فحص تلقائي للنتيجة: نخبرك فورًا إن خرج الفيديو ناقصًا أو بلا صوت بدل اكتشاف ذلك بعد التحميل
     const chk = []; if (mux.v.length !== done) chk.push('عدد إطارات الفيديو ' + mux.v.length + ' بدل ' + done); if (!mux.a.length) chk.push('لا يوجد مقطع صوت'); else if (peak < .002) chk.push('الصوت صامت تقريبًا، تحقق من ملفات الصوت'); if (blob.size < 5000) chk.push('الملف صغير جدًا');
     const chkTxt = chk.length ? ' — ⚠️ تنبيه: ' + chk.join('، ') : ''; LG.result = { bytes: blob.size, frames: mux.v.length, audioChunks: mux.a.length, peak: +peak.toFixed(3), warnings: chk };
@@ -163,11 +163,11 @@ async function exportExact(opt) {
       msg('تم التصدير التجريبي (' + (done / fps).toFixed(1) + ' ثانية، ' + (blob.size / 1048576).toFixed(1) + ' ميجابايت). افحص الجودة والتزامن أدناه قبل التصدير الكامل' + note + chkTxt);
     } else { msg('تم التصدير (' + (blob.size / 1048576).toFixed(1) + ' ميجابايت)' + note + chkTxt); offerShare(blob, a.download); a.click(); }
   } catch (e) {
-    try { LG.error = String(e && e.message || e).slice(0, 300); } catch (_) {}
+    try { LG.error = String(e && e.message || e).slice(0, 300); } catch (_) { dbg(_); }
     if (vcfg.hardwareAcceleration === 'prefer-hardware' && !opt._sw && !(e && e.message === 'cancel') && !EXP_CANCEL) { retrySw = true; msg('مشفّر العتاد لم يعمل على هذا الجهاز، نعيد التصدير بالمشفّر البرمجي (أبطأ لكنه أضمن)…'); console.warn('hw encoder failed, retrying in software', e); }
     else msg(e && e.message === 'cancel' ? 'أُلغي التصدير' : 'تعذّر التصدير: ' + (e && e.message ? e.message : e)); if (!retrySw) console.error(e);
   } finally {
-    window.setTimeout = S.st; window.clearTimeout = S.ct; EXPORTING = false; playing = false; try { venc && venc.state !== 'closed' && venc.close(); } catch (_) {}
+    window.setTimeout = S.st; window.clearTimeout = S.ct; EXPORTING = false; playing = false; try { venc && venc.state !== 'closed' && venc.close(); } catch (_) { dbg(_); }
     AC = S.AC; DEST = S.DEST; AN = S.AN; AMB = S.AMB; cur = S.cur; SFX.noise = S.noise; SFX.lastStep = S.ls; SFX.lastC = S.lc; idx = 0; t = 0; spoken = false; MOOD = 0; wlOff(); btn.textContent = label;
   }
   if (retrySw) return exportExact(Object.assign({}, opt, { _sw: true }));

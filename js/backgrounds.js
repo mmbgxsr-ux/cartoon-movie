@@ -80,14 +80,8 @@ async function autoBg(auto) {
   const parts = [{ text: prompt }]; bgs.forEach((im, i) => { parts.push({ text: 'صورة رقم ' + (i + 1) + ':' }); parts.push({ inlineData: { mimeType: 'image/jpeg', data: smallJpeg(im) } }); });
   busy = true; $('bAuto').disabled = true; msg('جاري تحليل الصور بواسطة Gemini …');
   try {
-    let j = null, lastSt = 0;
-    for (let a = 0; a < 3 && !j; a++) {
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }) });
-      if (r.status === 429 || r.status >= 500) { lastSt = r.status; msg('انتظار حد الطلبات …'); await sleep(9000 * (a + 1)); continue; }
-      const d = await r.json(); if (!r.ok) throw new Error(gemErr(r.status, d.error && d.error.message));
-      j = JSON.parse(d.candidates[0].content.parts.map(p => p.text || '').join('').replace(/```json|```/g, '').trim());
-    }
-    if (!j) throw new Error(lastSt ? gemErr(lastSt) : 'لم يصل رد');
+    const d = await geminiCall(GEM_VISION, key, { contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }, { tries: 3, wait: 9000, onWait: () => msg('انتظار حد الطلبات …') });
+    const j = geminiJson(d); if (!j || typeof j !== 'object') throw new Error('لم يصل رد صالح');
     const slotImg = {}; slots.forEach(s => { slotImg[s] = +j[s]; });
     bgBackup = bgs.slice(); const fixed = applyOrder(slotImg, slots); $('bUndo').style.display = '';
     msg('تم التعرف على الخلفيات وترتيبها' + (fixed ? ' (تعذّرت مطابقة ' + fixed + ' منها، راجعها)' : '') + '. راجع المصغّرات وصحّح أي خطأ من «تعيين خلفية كل مشهد».');
@@ -100,8 +94,8 @@ $('bUndo').onclick = () => { if (!bgBackup) return; bgs.length = 0; bgBackup.for
 // ===== ضبط موضع الشخصية (الأرض والمكان والحجم) لكل خلفية، يُحفظ في المتصفح =====
 (function () {
   const GK = 'cartoonGround1', DEF = { y: Object.assign({}, GRG), s: Object.assign({}, GRS), x: Object.assign({}, GRX) }; let GO = {};
-  try { GO = JSON.parse(Store.getItem(GK) || '{}'); } catch (_) {}
-  const save = () => { try { Store.setItem(GK, JSON.stringify(GO)); } catch (_) {} };
+  try { GO = JSON.parse(Store.getItem(GK) || '{}'); } catch (_) { dbg(_); }
+  const save = () => { try { Store.setItem(GK, JSON.stringify(GO)); } catch (_) { dbg(_); } };
   const apply = k => {
     for (const [o, d] of [[GRG, DEF.y], [GRX, DEF.x], [GRS, DEF.s]]) { if (d[k] != null) o[k] = d[k]; else delete o[k]; }
     const v = GO[k]; if (v) { GRG[k] = v[0]; GRX[k] = v[1]; GRS[k] = v[2]; }

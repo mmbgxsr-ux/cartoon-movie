@@ -94,7 +94,7 @@
       render(); document.getElementById('msg').textContent = 'تم تحويل ' + n + ' مشهدًا إلى مشاهد حوار، راجع ثم اضغط «حفظ وتطبيق»'; }; }
   document.getElementById('eAdd').onclick = () => { ED.push({ h: 'مشهد ' + (ED.length + 1), bg: 1, text: '', acts: [[0, 'talk']], props: [], noWalk: false }); render(); };
   document.getElementById('eClear').onclick = () => { if (!confirm('حذف كل المشاهد والبدء بمشهد فارغ؟')) return; ED = [{ h: 'مشهد 1', bg: 1, text: '', acts: [[0, 'wave']], props: [], noWalk: false }]; render(); };
-  document.getElementById('eDef').onclick = () => { if (!confirm('الرجوع لمشاهد الدرس الأصلي؟')) return; try { Store.removeItem(SK); Store.removeItem('cartoonLastScene1'); Store.removeItem('cartoonDraft1'); } catch (_) {} Store.reload(); };
+  document.getElementById('eDef').onclick = () => { if (!confirm('الرجوع لمشاهد الدرس الأصلي؟')) return; try { Store.removeItem(SK); Store.removeItem('cartoonLastScene1'); Store.removeItem('cartoonDraft1'); } catch (_) { dbg(_); } Store.reload(); };
   document.getElementById('eSave').onclick = () => {
     ED.forEach(s => { if (s.lines) { s.lines = s.lines.filter(L => L.t.trim()); syncLines(s); } });
     const bad = ED.findIndex(s => !s.text.trim()); if (bad >= 0) { document.getElementById('msg').textContent = 'اكتب نص المشهد ' + (bad + 1) + ' أو احذفه'; return; }
@@ -108,13 +108,13 @@
     if (Array.isArray(d) && d.length && d.every(x => x && typeof x.text === 'string') && JSON.stringify(d.map(pick)) !== BASE) {
       ED = d.map(pick); document.getElementById('msg').textContent = 'تم استرجاع مسودة غير محفوظة من المحرر. اضغط «حفظ وتطبيق» لتثبيتها';
     }
-  } catch (_) {}
+  } catch (_) { dbg(_); }
   let last = JSON.stringify(ED);
   setInterval(() => {
     let cur; try { cur = JSON.stringify(ED); } catch (_) { return; }
     if (cur === last) return; last = cur;
-    try { if (cur === BASE) Store.removeItem(DK); else Store.setItem(DK, cur); } catch (_) {}
+    try { if (cur === BASE) Store.removeItem(DK); else Store.setItem(DK, cur); } catch (_) { dbg(_); }
   }, 3000);
-  window.addEventListener('pagehide', () => { try { const cur = JSON.stringify(ED); if (cur !== BASE) Store.setItem(DK, cur); } catch (_) {} });
+  window.addEventListener('pagehide', () => { try { const cur = JSON.stringify(ED); if (cur !== BASE) Store.setItem(DK, cur); } catch (_) { dbg(_); } });
   render();
 })();

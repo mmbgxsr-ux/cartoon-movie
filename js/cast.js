@@ -13,14 +13,14 @@ const CAST_PRESET = [
   { id: 'muq', name: 'المقوقس', top: '#6d1f33', bottom: '#2f2540', acc: 'cap', accColor: '#7a1f3a', scale: .98, voice: 'Orus' },
   { id: 'sol', name: 'الجندي', top: '#4d5560', bottom: '#3a3f47', acc: 'helmet', accColor: '#9aa3ad', scale: 1, voice: 'Puck' }
 ];
-let CAST = (() => { try { const a = JSON.parse(Store.getItem(CAST_K) || 'null'); if (Array.isArray(a) && a.length && a.every(x => x && x.id)) return a; } catch (_) {} return [Object.assign({}, CAST_GUIDE)]; })();
+let CAST = (() => { try { const a = JSON.parse(Store.getItem(CAST_K) || 'null'); if (Array.isArray(a) && a.length && a.every(x => x && x.id)) return a; } catch (_) { dbg(_); } return [Object.assign({}, CAST_GUIDE)]; })();
 if (!CAST.some(c => c.id === 'guide')) CAST.unshift(Object.assign({}, CAST_GUIDE));
 // اتجاه النظر: الصور الأصلية تنظر لجهة واحدة (الافتراضي يمين). المستمعون يلتفتون نحو المتحدث، والمتحدث نحو أقرب مستمع، بقلب الصورة أفقيًا
 let FLIP = false;
 const FACE_K = 'cartoonFace1';
 let FACE_BASE = (() => { try { return Store.getItem(FACE_K) === 'l' ? -1 : 1; } catch (_) { return 1; } })();
 const faceDir = c => (c.face === 'l' ? -1 : c.face === 'r' ? 1 : FACE_BASE);
-const castSave = () => { try { Store.setItem(CAST_K, JSON.stringify(CAST)); } catch (_) {} };
+const castSave = () => { try { Store.setItem(CAST_K, JSON.stringify(CAST)); } catch (_) { dbg(_); } };
 const castById = id => CAST.find(c => c.id === id) || CAST[0];
 // مطابقة الاسم: تطابق تام، ثم الكلمة الأولى (عمر ≠ عمرو)، ثم أي كلمة كاملة في الاسم، ثم احتواء يُقبل فقط إن كان وحيدًا
 const castByName = n => {
@@ -32,7 +32,7 @@ const voiceOf = s => castById(s.spk || 'guide').voice || '';
 // المتحدث الحالي في مشهد حوار: من أوقات الأسطر (lineT) أو بالتناسب مع طول النص إن لم يتوفر
 function speakerAt(s, tt) {
   if (!s.lines || !s.lines.length) return s.spk || null;
-  let ta = tt - s.inT; try { if (typeof envOf === 'function' && envOf(s)) ta = audioPos(s); } catch (_) {}
+  let ta = tt - s.inT; try { if (typeof envOf === 'function' && envOf(s)) ta = audioPos(s); } catch (_) { dbg(_); }
   let T = s.lineT; if (!T || T.length !== s.lines.length) { const tot = s.lines.reduce((q, L) => q + L.t.length, 0) || 1, D = Math.max(1, s.main || 1); let a = 0; T = s.lines.map(L => { const o = { id: L.spk, a, b: a + L.t.length / tot * D }; a = o.b; return o; }); }
   let id = T[T.length - 1].id; for (const x of T) if (ta < x.b + .15) { id = x.id; break; } return id;
 }
@@ -146,7 +146,7 @@ drawChar = function (s, tt) {
   // الاستماع الحي: عند نهاية عبارة المتكلم أو نبرته القوية يومئ مستمع واحد (بالتناوب) بعد تأخر طبيعي ~0.2 ثانية
   const lis = list.filter(id => id !== spk); let nodWho = null, nod = 0;
   if (lis.length && LIFE()) {
-    let EVs = null; try { EVs = envOf(s); } catch (_) {} const pos = EVs ? audioPos(s) : -1, evOn = EVs && pos >= 0 && pos <= EVs.dur;
+    let EVs = null; try { EVs = envOf(s); } catch (_) { dbg(_); } const pos = EVs ? audioPos(s) : -1, evOn = EVs && pos >= 0 && pos <= EVs.dur;
     const cnt = evOn ? evCount(EVs, pos) : chunkAt(s, m);
     if (s._lk == null || s._lsp !== spk) { s._lk = cnt; s._lsp = spk; s._lt = -9; s._lw = 0; }
     else if (cnt !== s._lk) { s._lk = cnt; s._lt = clock; s._lw = (s._lw || 0) + 1; }
@@ -214,7 +214,7 @@ drawChar = function (s, tt) {
     previews.forEach(p => paint(p.cv, p.c));
   }
   { const fs = el('select'); [['r', 'تنظر لليمين'], ['l', 'تنظر لليسار']].forEach(([v, t]) => fs.appendChild(el('option', { value: v, textContent: t }))); fs.value = FACE_BASE < 0 ? 'l' : 'r';
-    fs.onchange = () => { FACE_BASE = fs.value === 'l' ? -1 : 1; try { Store.setItem(FACE_K, fs.value); } catch (_) {} };
+    fs.onchange = () => { FACE_BASE = fs.value === 'l' ? -1 : 1; try { Store.setItem(FACE_K, fs.value); } catch (_) { dbg(_); } };
     box.before(el('div', { className: 'row' }, [el('span', { textContent: 'الشخصية الأصلية في الصور:' }), fs, el('span', { textContent: '(تلتفت الشخصيات نحو بعضها تلقائيًا في مشاهد الحوار)', style: 'font-size:12px;color:#8ea0b5' })])); }
   document.getElementById('castAdd').onclick = () => { const n = CAST.length; CAST.push({ id: 'c' + Date.now().toString(36), name: 'شخصية ' + n, top: '#3d5a80', bottom: '#2b2f3a', acc: '', accColor: '#f3ead2', scale: 1, voice: '' }); castSave(); render(); };
   document.getElementById('castPreset').onclick = () => { if (CAST.length > 1 && !confirm('استبدال الطاقم الحالي بطاقم «فتح مصر»؟')) return; CAST = CAST_PRESET.map(c => Object.assign({}, c)); castSave(); render(); };

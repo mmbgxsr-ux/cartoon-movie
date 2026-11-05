@@ -1,3 +1,5 @@
+// تسجيل أخطاء كانت تُبتلع بصمت (محدود العدد حتى لا يغرق الكونسول إن تكرر الخطأ داخل حلقة الرسم)
+let _dbgN = 0; const dbg = e => { if (_dbgN++ < 40) { try { console.debug('[cartoon]', e); } catch (_) {} } };
 // طبقة التخزين: واجهة متزامنة مثل localStorage، مدعومة بـ IndexedDB (سعة كبيرة)، مع ترحيل تلقائي من الإصدارات القديمة
 (function () {
   const PASS = ['gk', 'cmTab'];            // تبقى في localStorage (مفتاح API وآخر تبويب)
@@ -6,12 +8,12 @@
   const reqP = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   const Store = {
     ready: false, persistent: false,
-    getItem(k) { if (PASS.includes(k)) return localStorage.getItem(k); return k in cache ? cache[k] : null; },
+    getItem(k) { if (PASS.includes(k)) { try { return localStorage.getItem(k); } catch (_) { return null; } } return k in cache ? cache[k] : null; },
     setItem(k, v) {
-      if (PASS.includes(k)) return localStorage.setItem(k, v);
+      if (PASS.includes(k)) { try { localStorage.setItem(k, v); } catch (e) { Store.onError && Store.onError(e); } return; }
       v = String(v); cache[k] = v; if (!db) { try { localStorage.setItem(k, v); } catch (e) { Store.onError && Store.onError(e); } return; } Store._w(tx => tx.put(v, k));
     },
-    removeItem(k) { if (PASS.includes(k)) return localStorage.removeItem(k); delete cache[k]; if (!db) { try { localStorage.removeItem(k); } catch (_) {} return; } Store._w(tx => tx.delete(k)); },
+    removeItem(k) { if (PASS.includes(k)) { try { localStorage.removeItem(k); } catch (_) { dbg(_); } return; } delete cache[k]; if (!db) { try { localStorage.removeItem(k); } catch (_) { dbg(_); } return; } Store._w(tx => tx.delete(k)); },
     keys() { return Object.keys(cache); },
     _w(fn) {
       if (!db) return;
@@ -31,10 +33,14 @@
         Store.persistent = true;
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
       } catch (e) { db = null; }
-      // ترحيل بيانات الإصدار القديم من localStorage (مرة واحدة)
-      const keys = new Set(LEGACY); for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && !PASS.includes(k) && /^(cartoon|mouths_)/.test(k)) keys.add(k); }
-      keys.forEach(k => { const v = localStorage.getItem(k); if (v != null && !(k in cache)) { cache[k] = v; if (db) Store._w(tx => tx.put(v, k)); } });
-      if (db) await Store.flush();
+      // ترحيل بيانات الإصدار القديم من localStorage (مرة واحدة): بعد التأكد من نسخها إلى IndexedDB نحذف الأصل،
+      // وإلا عادت القيمة القديمة بعد أي حذف أو إعادة ضبط (لأن المفتاح المحذوف لا يوجد في الذاكرة فيُرحَّل من جديد)
+      const moved = [];
+      try {
+        const keys = new Set(LEGACY); for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && !PASS.includes(k) && /^(cartoon|mouths_)/.test(k)) keys.add(k); }
+        keys.forEach(k => { const v = localStorage.getItem(k); if (v == null) return; moved.push(k); if (!(k in cache)) { cache[k] = v; if (db) Store._w(tx => tx.put(v, k)); } });
+      } catch (e) { dbg(e); }   // التخزين المحلي محجوب: نكمل بلا ترحيل بدل أن يتعطل الإقلاع
+      if (db) { const rs = await Store.flush(); if (rs.every(r => r.status === 'fulfilled')) moved.forEach(k => { try { localStorage.removeItem(k); } catch (_) { dbg(_); } }); }
       Store.ready = true;
     }
   };

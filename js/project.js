@@ -4,9 +4,14 @@
   window.PROJECT_KEYS = KEYS;
   const TEXTKEYS = ['cartoonPlan1', 'cartoonLastScene1'];   // مفاتيح نصها ليس JSON
   const MAXJSON = 100 * 1048576;   // أكبر ملف مشروع JSON نقبله
+  // التحقق من قيم المشروع قبل لمس التخزين، حتى لا يستبدل ملف تالف مشروعك الحالي (مشترك مع js/package.js)
+  window.validateProjectData = data => KEYS.forEach(k => { const v = data[k]; if (v === undefined) return; if (typeof v !== 'string') throw new Error('ملف غير صالح: ' + k); if (!TEXTKEYS.includes(k)) { try { JSON.parse(v); } catch (_) { throw new Error('ملف غير صالح: ' + k); } } });
+  // فتح مشروع يستبدل العمل الحالي: نسأل أولًا إن كان هناك عمل (مشاهد محفوظة أو صور أو صوت مرفوع)
+  const hasWork = () => Store.getItem('cartoonScenes1') != null || bgs.some(im => im && im._f) || (typeof AUDSRC !== 'undefined' && AUDSRC.length > 0);
+  window.confirmReplace = () => !hasWork() || confirm('فتح مشروع آخر سيستبدل مشروعك الحالي (المشاهد والصور والصوت). إن لم تكن حفظته فسيضيع. هل تريد المتابعة؟');
   const say = t => { const m = document.getElementById('msg'); if (m) m.textContent = t; };
   document.getElementById('bPrjSave').onclick = () => {
-    const data = {}; KEYS.forEach(k => { try { const v = Store.getItem(k); if (v != null) data[k] = v; } catch (_) {} });
+    const data = {}; KEYS.forEach(k => { try { const v = Store.getItem(k); if (v != null) data[k] = v; } catch (_) { dbg(_); } });
     const blob = new Blob([JSON.stringify({ app: 'cartoon-movie', v: 1, date: new Date().toISOString(), data }, null, 1)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = 'project-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove();
@@ -21,7 +26,8 @@
       const o = JSON.parse(await f.text());
       if (!o || o.app !== 'cartoon-movie' || !o.data || typeof o.data !== 'object' || Array.isArray(o.data)) throw new Error('ملف غير صالح');
       // نتحقق من كل القيم قبل أن نلمس التخزين، حتى لا يستبدل ملف تالف مشروعك الحالي
-      KEYS.forEach(k => { const v = o.data[k]; if (v === undefined) return; if (typeof v !== 'string') throw new Error('ملف غير صالح: ' + k); if (!TEXTKEYS.includes(k)) { try { JSON.parse(v); } catch (_) { throw new Error('ملف غير صالح: ' + k); } } });
+      validateProjectData(o.data);
+      if (!o.partial && !confirmReplace()) { say('أُلغي فتح المشروع، ولم يتغير شيء'); return; }
       KEYS.forEach(k => { if (typeof o.data[k] === 'string') Store.setItem(k, o.data[k]); else if (!o.partial) Store.removeItem(k); });
       if (o.partial) Store.removeItem('cartoonLastScene1');
       say('تم فتح المشروع، جاري إعادة التحميل …'); setTimeout(() => Store.reload(), 600);

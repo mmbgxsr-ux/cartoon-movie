@@ -4,7 +4,7 @@ function skinOf(f, m) {
   const R = [], G = [], B = []; const g2 = f.getContext('2d');
   for (const [dx, dy] of [[-.85, -.12], [.85, -.12], [-.7, .35], [.7, .35], [0, -.9]]) {
     const x = Math.round(m.x + dx * m.w), y = Math.round(m.y + dy * m.w); if (x < 1 || y < 1 || x >= f.width - 1 || y >= f.height - 1) continue;
-    try { const d = g2.getImageData(x - 1, y - 1, 3, 3).data; for (let i = 0; i < 36; i += 4) if (d[i + 3] > 200) { R.push(d[i]); G.push(d[i + 1]); B.push(d[i + 2]); } } catch (_) {}
+    try { const d = g2.getImageData(x - 1, y - 1, 3, 3).data; for (let i = 0; i < 36; i += 4) if (d[i + 3] > 200) { R.push(d[i]); G.push(d[i + 1]); B.push(d[i + 2]); } } catch (_) { dbg(_); }
   }
   const med = a => { a.sort((u, v) => u - v); return a[a.length >> 1]; };
   const sk = R.length ? { r: med(R), g: med(G), b: med(B) } : { r: 205, g: 150, b: 125 }; sk.sig = sig; return (f._sk = sk);
@@ -184,10 +184,10 @@ function loadMouths(n) {
   try {
     const all = JSON.parse(Store.getItem('mouths_v3') || '{}'), arr = all[mkey(n)], fr = frames[n];
     if (arr && fr && arr.length === fr.length) arr.forEach((m, i) => { if (m) fr[i].mouth = m; });
-  } catch (_) {}
+  } catch (_) { dbg(_); }
 }
 function saveMouths(n) {
-  try { const all = JSON.parse(Store.getItem('mouths_v3') || '{}'); all[mkey(n)] = frames[n].map(f => f.mouth); Store.setItem('mouths_v3', JSON.stringify(all)); } catch (_) {}
+  try { const all = JSON.parse(Store.getItem('mouths_v3') || '{}'); all[mkey(n)] = frames[n].map(f => f.mouth); Store.setItem('mouths_v3', JSON.stringify(all)); } catch (_) { dbg(_); }
   eyesAll(n);   // مكان العينين يُحسب من الفم، فيُعاد حسابه كلما تغيّر الفم
 }
 function frameJpeg(f) {
@@ -201,17 +201,11 @@ async function detectMouths(n, silent) {
   const parts = [{ text: prompt }]; fr.forEach((f, i) => { parts.push({ text: 'frame ' + (i + 1) + ':' }); parts.push({ inlineData: { mimeType: 'image/jpeg', data: frameJpeg(f) } }); });
   const was = busy; msg('جاري اكتشاف مكان الفم في «' + SH[n].label + '» …');
   try {
-    let arr = null, lastSt = 0;
-    for (let a = 0; a < 3 && !arr; a++) {
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }) });
-      if (r.status === 429 || r.status >= 500) { lastSt = r.status; await sleep(8000 * (a + 1)); continue; }
-      const d = await r.json(); if (!r.ok) throw new Error(gemErr(r.status, d.error && d.error.message));
-      arr = JSON.parse(d.candidates[0].content.parts.map(p => p.text || '').join('').replace(/```json|```/g, '').trim());
-    }
-    if (!Array.isArray(arr)) throw new Error(lastSt ? gemErr(lastSt) : 'لم يصل رد صالح');
+    const arr = geminiJson(await geminiCall(GEM_VISION, key, { contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }, { tries: 3, wait: 8000 }));
+    if (!Array.isArray(arr)) throw new Error('لم يصل رد صالح');
     let ok = 0;
     arr.forEach(o => {
-      const f = fr[(o.i | 0) - 1]; if (!f || !o) return;
+      if (!o) return; const f = fr[(o.i | 0) - 1]; if (!f) return;
       if (o.visible === false) { f.mouth.on = false; return; }
       const x = +o.x, y = +o.y, w = +o.w, H = f.bb.y1 - f.bb.y0;
       if (!(x > 0 && x < 1 && y > 0 && y < 1 && w > .01 && w < .6)) return;
@@ -286,7 +280,7 @@ function mSetRot(e) {
   f.mouth.r = a; f.mouth.weak = false; f._sk = null; saveMouths(mSel.value); drawMouthPrev();
 }
 mc.onpointerdown = e => {
-  mDown = true; try { mc.setPointerCapture(e.pointerId); } catch (_) {}
+  mDown = true; try { mc.setPointerCapture(e.pointerId); } catch (_) { dbg(_); }
   const f = curF(); mRot = false;
   if (f && f.mouth) { const h = mHandle(mPos(f)), q = mcXY(e); if (Math.hypot(q.x - h.x, q.y - h.y) < (mFS ? 50 : 20)) mRot = true; }
   if (mRot) mSetRot(e); else mSetPos(e);
@@ -440,7 +434,7 @@ function fillVoices() {
 if (window.speechSynthesis) { fillVoices(); speechSynthesis.onvoiceschanged = fillVoices; }
 function speak(s) {
   if (!$('cTts').checked) return;
-  const ab = AB(s); if (ab) { const a = ac(); if (a.state === 'suspended') a.resume(); const src = a.createBufferSource(); src.buffer = ab; src.connect(a.destination); src.connect(DEST); if (AN) src.connect(AN); audioUntil = a.currentTime + ab.duration; try { analyzeAudio(ab); } catch (_) {} s._a0 = a.currentTime; src.start(a.currentTime); cur = src; return; }
+  const ab = AB(s); if (ab) { const a = ac(); if (a.state === 'suspended') a.resume(); const src = a.createBufferSource(); src.buffer = ab; src.connect(a.destination); src.connect(DEST); if (AN) src.connect(AN); audioUntil = a.currentTime + ab.duration; try { analyzeAudio(ab); } catch (_) { dbg(_); } s._a0 = a.currentTime; src.start(a.currentTime); cur = src; return; }
   if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
   const ch = chunks(s); s.speaking = true; s.done = false; s.hold = 0; s.ci = -1;

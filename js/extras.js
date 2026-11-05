@@ -1,6 +1,6 @@
 // ===== نبض على مواضع الخرائط عند ذكر المنطقة (المواضع نسب من الصورة، ويمكن ضبطها بالضغط) =====
 const PULSE = {};
-const PK = 'cartoonPulse1'; let PO = {}; try { PO = JSON.parse(Store.getItem(PK) || '{}'); } catch (_) {}
+const PK = 'cartoonPulse1'; let PO = {}; try { PO = JSON.parse(Store.getItem(PK) || '{}'); } catch (_) { dbg(_); }
 const pts = k => PO[k] || PULSE[k];
 function drawPulse(p, pw, ph, chh) {
   if (!$('cPulse').checked) return; const arr = pts(p.id + '|' + p.cap); if (!arr) return;
@@ -24,9 +24,9 @@ window.pDraw = pDraw; $('pSel').onchange = pDraw;
 $('pc').onpointerdown = e => {
   if (!PENT.length) return; const [k, j] = PENT[+$('pSel').value]; if (!props[k.split('|')[0]]) return; const r = $('pc').getBoundingClientRect();
   const arr = pts(k).map(a => a.slice()); arr[j] = [+((e.clientX - r.left) / r.width).toFixed(3), +((e.clientY - r.top) / r.height).toFixed(3)]; PO[k] = arr;
-  try { Store.setItem(PK, JSON.stringify(PO)); } catch (_) {} pDraw();
+  try { Store.setItem(PK, JSON.stringify(PO)); } catch (_) { dbg(_); } pDraw();
 };
-$('pReset').onclick = () => { PO = {}; try { Store.removeItem(PK); } catch (_) {} pDraw(); };
+$('pReset').onclick = () => { PO = {}; try { Store.removeItem(PK); } catch (_) { dbg(_); } pDraw(); };
 pDraw();
 
 // ===== مزاج المشهد: حزن (أخطار) يعتّم الإضاءة ويبطئ الموسيقى، ودهشة تضيء المشهد =====
@@ -91,9 +91,9 @@ async function jumpTo(i) {
 }
 function idxTick() {
   if (idx !== MARK) { const o = $('ix' + MARK), n = $('ix' + idx); if (o) o.classList.remove('cur'); if (n) n.classList.add('cur'); MARK = idx; }
-  if (playing && !EXPORTING && idx !== SAVEDIDX) { SAVEDIDX = idx; try { Store.setItem(LSK, idx); } catch (_) {} }
+  if (playing && !EXPORTING && idx !== SAVEDIDX) { SAVEDIDX = idx; try { Store.setItem(LSK, idx); } catch (_) { dbg(_); } }
 }
-try { const sv = +Store.getItem(LSK); if (sv > 0 && sv < SHOTS.length) { $('sStart').value = sv; msg('تم تحديد آخر مشهد توقفت عنده: ' + (sv + 1) + '. اختر «ابدأ من» المشهد 1 للبدء من الأول'); } } catch (_) {}
+try { const sv = +Store.getItem(LSK); if (sv > 0 && sv < SHOTS.length) { $('sStart').value = sv; msg('تم تحديد آخر مشهد توقفت عنده: ' + (sv + 1) + '. اختر «ابدأ من» المشهد 1 للبدء من الأول'); } } catch (_) { dbg(_); }
 
 // ===== مؤثرات صوتية: خطوات على العشب ونقرة عند ظهور البطاقة =====
 const SFX = { lastStep: 0, lastC: -1, noise: null };
@@ -126,8 +126,8 @@ function stepTick(c, v) { if (!sfxOn()) return; if (c !== SFX.lastC) { SFX.lastC
 
 // ===== إبقاء الشاشة مضاءة أثناء التشغيل/التسجيل =====
 let WL = null;
-async function wlOn() { try { if (navigator.wakeLock && !WL) { WL = await navigator.wakeLock.request('screen'); WL.addEventListener('release', () => { WL = null; }); } } catch (_) {} }
-function wlOff() { try { WL && WL.release(); } catch (_) {} WL = null; }
+async function wlOn() { try { if (navigator.wakeLock && !WL) { WL = await navigator.wakeLock.request('screen'); WL.addEventListener('release', () => { WL = null; }); } } catch (_) { dbg(_); } }
+function wlOff() { try { WL && WL.release(); } catch (_) { dbg(_); } WL = null; }
 $('cRec').addEventListener('change', () => { if ($('cRec').checked) msg('أثناء التسجيل أبقِ الشاشة مضاءة وابقَ في هذه الصفحة حتى ينتهي الفيلم'); });
 
 // ===== كاميرا سينمائية: تقريب بطيء/انزلاق جانبي حسب نوع المشهد + لقطة قريبة (قصّ زاوية) عند الشرح =====

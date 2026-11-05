@@ -24,7 +24,7 @@ function ambOf(k) {
   const c = document.createElement('canvas'); c.width = 32; c.height = 18; const g = c.getContext('2d'); g.drawImage(im, 0, 0, 32, 18);
   let r = 0, gg = 0, b = 0, n = 0; try { const d = g.getImageData(0, 11, 32, 7).data; for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; } } catch (_) { return null; }
   r = Math.round(r / n); gg = Math.round(gg / n); b = Math.round(b / n); const lum = .3 * r + .59 * gg + .11 * b;
-  let sr = 0, sg = 0, sb = 0, sn = 0; try { const d = g.getImageData(0, 0, 32, 6).data; for (let i = 0; i < d.length; i += 4) { sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; sn++; } } catch (_) {}
+  let sr = 0, sg = 0, sb = 0, sn = 0; try { const d = g.getImageData(0, 0, 32, 6).data; for (let i = 0; i < d.length; i += 4) { sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; sn++; } } catch (_) { dbg(_); }
   const sky = sn ? { r: Math.round(sr / sn), g: Math.round(sg / sn), b: Math.round(sb / sn) } : { r, g: gg, b };
   return (BGAMB[k] = { r, g: gg, b, a: .17, dim: lum < 120 ? (120 - lum) / 120 * .2 : 0, sky });
 }

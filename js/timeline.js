@@ -6,7 +6,7 @@
   const tAt = (E, sf) => { sf = Math.max(0, Math.min(1, sf)); let k = 0; const goal = sf * E.tot; while (k < E.n && E.cum[k + 1] < goal) k++; return k / 100; };   // زمن (ثانية) يبلغ فيه الكلام النسبة sf
   function draw() {
     if (!box.open) return;
-    const s = SHOTS[idx]; let ab = null; try { ab = s && AB(s); } catch (_) {}
+    const s = SHOTS[idx]; let ab = null; try { ab = s && AB(s); } catch (_) { dbg(_); }
     g.clearRect(0, 0, W2, H2); g.fillStyle = '#0d1520'; g.fillRect(0, 0, W2, H2);
     if (!s) { note.textContent = ''; return; }
     if (!ab) { note.textContent = 'المشهد ' + (idx + 1) + ': لا يوجد ملف صوت مرتبط به، فتُحسب الإيماءات من طول النص.'; return; }

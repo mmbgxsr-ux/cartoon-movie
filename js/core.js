@@ -9,32 +9,43 @@ const IN = 2, OUT = 1.2, RATE = 9.5, WAVE_HOLD = 2.6;   // WAVE_HOLD: مدة ا�
 const SHOTS = [
  { h: 'مشهد 1', bg: 1, acts: [[0, 'wave']], text: `اكتب هنا نص المشهد الأول من تبويب «المحرر».` }
 ];
+// تنقية الإيماءات: عنصر تالف (null أو بلا اسم) كان يوقف الإقلاع كله ويبقى محفوظًا فيُعطّل التطبيق عند كل فتح
+const okActs = a => { const r = Array.isArray(a) ? a.filter(e => Array.isArray(e) && e.length >= 2 && Number.isFinite(+e[0]) && typeof e[1] === 'string') : []; return r.length ? r : [[0, 'talk']]; };
 // مشاهد مخصصة من محرر المشاهد (إن وُجدت) تحل محل مشاهد الدرس الافتراضي
+const rawScenes = Store.getItem('cartoonScenes1');
 try {
-  const cs = JSON.parse(Store.getItem('cartoonScenes1') || 'null');
+  const cs = JSON.parse(rawScenes || 'null');
   if (Array.isArray(cs) && cs.length) {
     const hasL = x => Array.isArray(x.lines) && x.lines.some(l => l && String(l.t || '').trim());
     const ok = cs.filter(x => x && ((typeof x.text === 'string' && x.text.trim()) || hasL(x))).map(x => {
-      const o = { h: String(x.h || 'مشهد'), bg: Math.min(15, Math.max(1, +x.bg || 1)), text: hasL(x) ? x.lines.map(l => String((l && l.t) || '').trim()).filter(Boolean).join(' ') : x.text.trim(), acts: Array.isArray(x.acts) && x.acts.length ? x.acts : [[0, 'talk']], props: Array.isArray(x.props) ? x.props : [] };
+      const o = { h: String(x.h || 'مشهد'), bg: Math.min(15, Math.max(1, Math.round(+x.bg) || 1)), text: hasL(x) ? x.lines.map(l => String((l && l.t) || '').trim()).filter(Boolean).join(' ') : x.text.trim(), acts: okActs(x.acts), props: Array.isArray(x.props) ? x.props.filter(p => p && typeof p.id === 'string') : [] };
       if (x.spk) o.spk = String(x.spk); if (Array.isArray(x.cast) && x.cast.length) o.cast = x.cast.map(String); if (x.noWalk || o.spk || (o.cast && (o.cast.length > 1 || o.cast[0] !== 'guide'))) o.noWalk = true; if (hasL(x)) { o.lines = x.lines.filter(l => l && String(l.t || '').trim()).map(l => ({ spk: String(l.spk || 'guide'), t: String(l.t).trim() })); o.cast = [...new Set(o.lines.map(l => l.spk))]; o.spk = o.lines[0].spk === 'guide' ? undefined : o.lines[0].spk; if (o.cast.length > 1 || o.cast[0] !== 'guide') o.noWalk = true; }
       if (x.holo) o.holo = true; if (x.noFace) o.noFace = true; if (x.amb) o.amb = String(x.amb); if (x.era) o.era = String(x.era); if (x.year) o.year = String(x.year); if (x.pos && typeof x.pos === 'object' && Object.keys(x.pos).length) o.pos = x.pos; if (x.wear && typeof x.wear === 'object' && Object.keys(x.wear).length) o.wear = x.wear;
       if (x.q && typeof x.q === 'object' && x.q.q && Array.isArray(x.q.opts) && x.q.opts.length >= 2) { const n = x.q.opts.length, a = x.q.ans != null && +x.q.ans >= 0 && +x.q.ans < n ? Math.floor(+x.q.ans) : -1; o.q = { q: String(x.q.q), opts: x.q.opts.map(String), ans: a, why: x.q.why ? String(x.q.why) : '' }; }   // لحظة قرار: ans=-1 يعني سؤال تفكير بلا إجابة واحدة صحيحة
-      if (x.run) o.run = true; if (x.out) o.out = x.out; if (+x.extra) o.extra = +x.extra; if (CAMX.includes(x.camx)) o.camx = x.camx; if (x.nocu) o.nocu = true; if (WXK.includes(x.wx)) o.wx = x.wx; if (LTK.includes(x.lt)) o.lt = x.lt; return o;
+      if (x.run) o.run = true; if (x.out) o.out = x.out; if (+x.extra) o.extra = Math.min(120, Math.max(-5, +x.extra)); if (CAMX.includes(x.camx)) o.camx = x.camx; if (x.nocu) o.nocu = true; if (WXK.includes(x.wx)) o.wx = x.wx; if (LTK.includes(x.lt)) o.lt = x.lt; return o;
     });
     if (ok.length) SHOTS.splice(0, SHOTS.length, ...ok);
   }
-} catch (_) {}
-SHOTS.forEach((s, i) => {
+} catch (e) { dbg(e); }
+const prepShots = () => SHOTS.forEach((s, i) => {
   s.cam = CAMI[s.camx] != null ? CAMI[s.camx] : i % 4; s.mood = (s.acts || []).some(a => a[1] === 'sad') ? -1 : (s.acts || []).some(a => a[1] === 'awe' || a[1] === 'joy') ? 1 : 0;
   s.inT = s.noWalk ? 0.5 : (s.run ? 1.3 : IN); s.outT = s.noWalk ? 0.5 : (s.out === 'turnaway' ? 2.1 : s.run ? .9 : OUT);
-  s.main = Math.max(6, s.text.length / RATE) + (s.extra || 0);
+  s.main = Math.max(1, Math.max(6, s.text.length / RATE) + (s.extra || 0));
   s.dur = s.inT + s.main + s.outT; s.map = s.bg;
   s.x = 0.2;
 });
+let SCENES_RECOVERED = false;
+try { prepShots(); } catch (e) {   // مشاهد محفوظة تالفة: لا نترك التطبيق معطّلًا، نحتفظ بنسخة منها ونبدأ بمشهد افتراضي
+  console.error('scenes:', e); SCENES_RECOVERED = true;
+  try { Store.setItem('cartoonScenesBackup1', rawScenes || ''); } catch (_) { dbg(_); }
+  Store.removeItem('cartoonScenes1');
+  SHOTS.splice(0, SHOTS.length, { h: 'مشهد 1', bg: 1, acts: [[0, 'wave']], text: `اكتب هنا نص المشهد الأول من تبويب «المحرر».` }); prepShots();
+}
 let TOTAL = SHOTS.reduce((a, s) => a + s.dur, 0);
 
 const cv = document.getElementById('c'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height, $ = id => document.getElementById(id);
 const msg = t => { $('msg').textContent = t || ''; };
+if (SCENES_RECOVERED) msg('المشاهد المحفوظة كانت تالفة فبدأنا بمشهد افتراضي. نسخة من القديمة محفوظة في المفتاح cartoonScenesBackup1');
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 const eq = r => Array.from({ length: r }, (_, i) => [i / r, (i + 1) / r]);
 

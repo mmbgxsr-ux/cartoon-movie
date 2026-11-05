@@ -5,7 +5,7 @@
 (function () {
   const say = t => { const m = document.getElementById('msg'); if (m) m.textContent = t; };
   const enc = new TextEncoder(), dec = new TextDecoder();
-  const MAXN = 2000, MAXMANIFEST = 20 * 1048576;
+  const MAXN = 2000, MAXMANIFEST = 20 * 1048576, MAXENTRY = 512 * 1048576, CRCMAX = 256 * 1048576;   // سقف الملف الواحد بعد الفك، وأكبر حجم نفحص CRC له
 
   // ---------- ZIP (بدون ضغط: الصور والصوت مضغوطة أصلًا) ----------
   const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -35,11 +35,12 @@
     const n = tail.getUint16(e + 10, true), cdSize = tail.getUint32(e + 12, true), cdOff = tail.getUint32(e + 16, true);
     if (n > MAXN) throw new Error('عدد الملفات داخل الحزمة كبير جدًا'); if (cdOff === 0xFFFFFFFF || cdOff + cdSize > size) throw new Error('ملف ZIP غير مدعوم');
     const mem = size <= 256 * 1048576 ? await file.arrayBuffer() : null;   // ملف أقل من 256 ميجابايت: نقرؤه مرة واحدة (أسرع بكثير من slice لكل مدخل)
-    const cd = mem ? new DataView(mem, cdOff, cdSize) : new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer()), ents = {}; let p = 0;
+    const cd = mem ? new DataView(mem, cdOff, cdSize) : new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer()), ents = Object.create(null); let p = 0;   // بلا نموذج أولي: مدخل باسم constructor كان يُقرأ كأنه ملف
     for (let i = 0; i < n; i++) {
       if (p + 46 > cd.byteLength || cd.getUint32(p, true) !== 0x02014b50) throw new Error('ملف ZIP تالف');
-      const method = cd.getUint16(p + 10, true), csize = cd.getUint32(p + 20, true), nl = cd.getUint16(p + 28, true), el = cd.getUint16(p + 30, true), cl = cd.getUint16(p + 32, true), lho = cd.getUint32(p + 42, true);
-      ents[dec.decode(new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nl))] = { method, csize, lho }; p += 46 + nl + el + cl;
+      const method = cd.getUint16(p + 10, true), csize = cd.getUint32(p + 20, true), nl = cd.getUint16(p + 28, true), el = cd.getUint16(p + 30, true), cl = cd.getUint16(p + 32, true), lho = cd.getUint32(p + 42, true), crc = cd.getUint32(p + 16, true), usize = cd.getUint32(p + 24, true);
+      if (csize === 0xFFFFFFFF || usize === 0xFFFFFFFF || lho === 0xFFFFFFFF) throw new Error('ملف ZIP64 غير مدعوم');
+      ents[dec.decode(new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nl))] = { method, csize, lho, crc, usize }; p += 46 + nl + el + cl;
     }
     const get = async path => {
       const m = ents[path]; if (!m) return null;
@@ -47,9 +48,17 @@
       const lh = mem ? new DataView(mem, m.lho, 30) : new DataView(await file.slice(m.lho, m.lho + 30).arrayBuffer()), s = m.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
       if (s + m.csize > size) throw new Error('ملف ZIP تالف');
       const b = mem ? new Blob([new Uint8Array(mem, s, m.csize)]) : file.slice(s, s + m.csize);
-      if (m.method === 0) return b;
-      if (m.method === 8 && window.DecompressionStream) return new Response(b.stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob();
-      throw new Error('طريقة ضغط غير مدعومة في ' + path);
+      if (m.csize > MAXENTRY || m.usize > MAXENTRY) throw new Error('ملف كبير جدًا داخل الحزمة: ' + path);
+      let out;
+      if (m.method === 0) out = b;
+      else if (m.method === 8 && window.DecompressionStream) {
+        // لا نصدّق الحجم المعلن: نقطع الفك عند تجاوزه (حماية من قنبلة الضغط)
+        let n = 0; const guard = new TransformStream({ transform(ch, c) { n += ch.byteLength; if (n > m.usize) throw new Error('حجم الملف بعد الفك أكبر من المعلن: ' + path); c.enqueue(ch); } });
+        out = await new Response(b.stream().pipeThrough(new DecompressionStream('deflate-raw')).pipeThrough(guard)).blob();
+      } else throw new Error('طريقة ضغط غير مدعومة في ' + path);
+      if (out.size !== m.usize) throw new Error('حجم الملف لا يطابق المعلن: ' + path);
+      if (out.size <= CRCMAX && crc32(new Uint8Array(await out.arrayBuffer())) !== m.crc) throw new Error('الملف تالف (فشل فحص CRC): ' + path);
+      return out;
     };
     return { names: Object.keys(ents), get };
   }
@@ -60,7 +69,7 @@
   async function collect(quiet) {          // تجمع الملفات والمانيفست بلا ضغط (يستعملها التصدير والحفظ التلقائي)
     const sy = quiet ? () => {} : say;
     const entries = [], man = { app: 'cartoon-movie', v: 2, date: new Date().toISOString(), data: {}, grids: {}, assets: { bg: [], sheets: {}, props: {}, audio: [], gen: [] } };
-    (window.PROJECT_KEYS || []).forEach(k => { try { const v = Store.getItem(k); if (v != null) man.data[k] = v; } catch (_) {} });
+    (window.PROJECT_KEYS || []).forEach(k => { try { const v = Store.getItem(k); if (v != null) man.data[k] = v; } catch (_) { dbg(_); } });
     const add = (dir, blob, name) => { const path = dir + '/' + String(entries.length).padStart(4, '0') + '.' + ext(name, blob.type); entries.push({ path, blob }); return path; };
     sy('جاري تجميع الصور …');
     for (const im of bgs) { const b = await asBlob(im); if (b) man.assets.bg.push({ path: add('bg', b, b.name), name: b.name || '' }); }
@@ -100,14 +109,17 @@
     if (!mb || mb.size > MAXMANIFEST) throw new Error('الحزمة لا تحتوي manifest.json صالحًا');
     const man = JSON.parse(await mb.text());
     if (!man || man.app !== 'cartoon-movie' || !man.data || typeof man.data !== 'object') throw new Error('ملف غير صالح');
+    validateProjectData(man.data);
+    if (!confirmReplace()) { say('أُلغي فتح الحزمة، ولم يتغير شيء'); return; }
     const blobs = {}, A = man.assets || {}, want = [];
     (A.bg || []).forEach(x => want.push(x.path)); Object.values(A.sheets || {}).forEach(s => (s.files || []).forEach(x => want.push(x.path)));
     Object.values(A.props || {}).forEach(x => want.push(x.path)); (A.audio || []).forEach(x => want.push(x.path)); (A.gen || []).forEach(x => want.push(x.path));
     let k = 0; for (const p of want) { if (typeof p !== 'string') continue; say('جاري استخراج الملفات ' + (++k) + ' / ' + want.length + ' …'); const b = await z.get(p); if (!b) throw new Error('ملف ناقص داخل الحزمة: ' + p); blobs[p] = b; }
+    // نكتب الملفات المعلّقة أولًا؛ إن فشلت (ضيق مساحة مثلًا) يبقى مشروعك الحالي كما هو، ثم نستبدل الإعدادات
+    const db = await pdb(); await pdo(db, 'readwrite', s => s.put({ manifest: { grids: man.grids || {}, assets: A }, blobs }, 'pkg')); db.close();
     // الإعدادات: تُستبدل كلها (الحزمة مشروع كامل)
     (window.PROJECT_KEYS || []).forEach(key => { if (typeof man.data[key] === 'string') Store.setItem(key, man.data[key]); else Store.removeItem(key); });
     Store.removeItem('cartoonLastScene1'); Store.removeItem('cartoonDraft1');
-    const db = await pdb(); await pdo(db, 'readwrite', s => s.put({ manifest: { grids: man.grids || {}, assets: A }, blobs }, 'pkg')); db.close();
     say('تم فتح الحزمة، جاري إعادة التحميل …'); setTimeout(() => Store.reload(), 600);
   }
   const mkFiles = (list, blobs) => list.map(x => new File([blobs[x.path]], x.name || x.path.split('/').pop(), { type: blobs[x.path].type || '' }));
@@ -159,8 +171,10 @@
   const blobImg = im => !!im && (!!im._f || /^blob:/.test(im.src || ''));
   const hasAssets = () => bgs.some(blobImg) || Object.keys(SH).some(n => blobImg(imgs[n]) || (parts[n] && parts[n].length)) || Object.keys(PROPSRC).some(k => PROPSRC[k]) || auds().length > 0 || SHOTS.some(x => x.pcm && x.gk);
   let lastSig = null, saving = false, paused = true, warned = false;   // paused حتى نفحص وجود لقطة قديمة، كي لا نمسحها بحالة فارغة
-  async function autosaveNow(force) {
+  const MIN_GAP = 90000; let lastSaveAt = 0;
+  async function autosaveNow(force, urgent) {
     if (!window.indexedDB || saving || paused) return false;
+    if (!force && !urgent && Date.now() - lastSaveAt < MIN_GAP) return false;
     if (!force && (playing || EXPORTING || busy)) return false;
     const sig = sigNow(); if (sig === lastSig) return false;
     saving = true;
@@ -173,7 +187,7 @@
         if (!entries.length) await sdo(db, 'readwrite', st => st.delete(SKEY));   // لا شيء لحفظه: تُمسح اللقطة القديمة
         else await sdo(db, 'readwrite', st => st.put({ date: man.date, manifest: { grids: man.grids, assets: man.assets }, blobs }, SKEY));
       } finally { db.close(); }
-      lastSig = sig; return true;
+      lastSig = sig; lastSaveAt = Date.now(); return true;
     } catch (e) { console.error('autosave', e); Store.onError && Store.onError(e); return false; }
     finally { saving = false; }
   }
@@ -196,13 +210,13 @@
   async function offerRestore() {
     if (!window.indexedDB) return;
     let snap = null;
-    try { const db = await sdb(); try { snap = await sdo(db, 'readonly', st => st.get(SKEY)); } finally { db.close(); } } catch (_) {}
+    try { const db = await sdb(); try { snap = await sdo(db, 'readonly', st => st.get(SKEY)); } finally { db.close(); } } catch (_) { dbg(_); }
     if (restoredNow) lastSig = sigNow();    // الحالة الآن مطابقة للقطة المستعادة: لا حاجة لإعادة كتابتها
     if (snap && snap.manifest && !restoredNow && !hasAssets()) { showRestoreBar(snap); return; }   // paused يبقى حتى يقرّر المستخدم
     paused = false;
   }
   setInterval(() => { autosaveNow(); }, AUTO_MS);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') autosaveNow(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') autosaveNow(false, true); });
 
   window.CMPack = { save, openZip, build: buildPkg, readZip, writeZip, autosaveNow, ready: false };   // ready=true بعد انتهاء استعادة أي حزمة معلّقة
   const b = document.getElementById('bPkgSave'); if (b) b.onclick = save;
