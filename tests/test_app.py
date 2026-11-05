@@ -967,3 +967,11 @@ def test_open_project_asks_before_replacing_work(page, tmp_path):
     page.wait_for_function("document.getElementById('msg').textContent.includes('أُلغي')", timeout=5000)
     assert page.evaluate("Store.getItem('cartoonScenes1')") == json.dumps(SCENES)
 
+
+def test_fullscreen_button_toggles(page):
+    page.click("#bFull")
+    page.wait_for_function("document.fullscreenElement === document.querySelector('.stage') || document.querySelector('.stage').classList.contains('pseudoFS')", timeout=5000)
+    page.click(".fsCtl button:last-child")   # زر الخروج داخل الشاشة الكاملة
+    page.wait_for_function("!document.fullscreenElement && !document.querySelector('.stage').classList.contains('pseudoFS')", timeout=5000)
+    assert "شاشة كاملة" in page.inner_text("#bFull")
+
