@@ -762,6 +762,22 @@ def test_face_zoom_pushes_in_on_awe_and_sad_only(page):
     assert r["max"] <= 1.4
 
 
+def test_listener_reacts_to_speaker_emotion_and_shifts_weight(page):
+    page.wait_for_function("Object.keys(SH).every(n => !SHIMG[n] || imgs[n])", timeout=30000)
+    page.wait_for_timeout(500)
+    r = page.evaluate("""() => {
+      const sh = Array.from({ length: 4000 }, (_, i) => listenerShift(i * .01, 0)), on = sh.filter(Boolean), other = Array.from({ length: 4000 }, (_, i) => listenerShift(i * .01, 1));
+      CAST = [CAST_GUIDE, CAST_PRESET[1]]; const main = 24 - 3.2, ob = blit, calls = [];
+      const mk = acts => ({ h: 'x', dur: 24, inT: 2, outT: 1.2, cam: 0, bg: 1, x: .4, text: 'نص', acts, cast: ['guide', 'amr'], spk: 'guide' });
+      const first = acts => { calls.length = 0; blit = (...a) => { calls.push(a); return ob(...a); }; try { clock = 7.3; drawChar(mk(acts), 2 + .6 * main); } finally { blit = ob; } return calls[0][6]; };
+      const talk = first([[0, 'talk']]), awe = first([[0, 'talk'], [.3, 'awe'], [.9, 'talk']]), sad = first([[0, 'talk'], [.3, 'sad'], [.9, 'talk']]);
+      return { frac: on.length / sh.length, maxA: Math.max(...on.map(q => q.a)), minA: Math.min(...on.map(q => q.a)), dirs: [...new Set(on.map(q => q.d))].sort(), differ: sh.some((v, i) => !!v !== !!other[i]), talk, awe, sad }; }""")
+    assert 0.05 < r["frac"] < 0.25 and r["maxA"] <= 1 and r["minA"] >= 0 and r["dirs"] == [-1, 1]   # حركة قصيرة نادرة، في الاتجاهين، وبلا قفزات
+    assert r["differ"]                                                # لكل مستمع جدوله
+    assert r["awe"]["sy"] > r["talk"]["sy"] + .01 and abs(r["awe"]["rot"] - r["talk"]["rot"]) > .02   # الدهشة: يتراجع ويرتفع قليلًا
+    assert r["sad"]["sy"] < r["talk"]["sy"] - .008 and r["sad"]["dy"] > r["talk"]["dy"] + 2           # الحزن: ينخفض قليلًا
+
+
 def test_generate_audio_stops_after_test_export_window(page):
     """genAll(maxSec) لا يولّد صوت ما بعد الثواني المطلوبة، فلا يستدعي التصدير التجريبي Gemini لكل الفيلم."""
     scenes = [dict(SCENES[0], h="مشهد %d" % i, text="نص المشهد رقم %d للاختبار" % i) for i in range(4)]

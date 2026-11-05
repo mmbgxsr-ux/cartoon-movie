@@ -133,6 +133,11 @@ function withCast(c, fn) {
 }
 
 // ----- الرسم: المتحدث يتحرك بالكامل، والباقون يستمعون بوضعية هادئة وفم مغلق -----
+// انتقال وزن المستمع: كل ~6–11 ثانية (بذرة لكل شخص) حركة بطيئة جانبية لمدة 1.4 ثانية في ~75% من الدورات؛ حتمية من الزمن فتتطابق المعاينة والتصدير
+function listenerShift(tm, i) {
+  const P = 6.5 + i * 1.3, T = tm + i * 3.1, k = Math.floor(T / P), ph = T - k * P; if (ph >= 1.4 || rn(k, i + 20) >= .75) return null;
+  const x = ph / 1.4; return { a: Math.sin(x * Math.PI) * Math.sin(x * Math.PI), d: rn(k + i * 7, 31 + i * 13) < .5 ? -1 : 1 };
+}
 const _drawChar0 = drawChar;
 drawChar = function (s, tt) {
   const list = castList(s); if (list.length < 2 && list[0] === 'guide') return _drawChar0(s, tt);
@@ -152,12 +157,17 @@ drawChar = function (s, tt) {
     else if (cnt !== s._lk) { s._lk = cnt; s._lt = clock; s._lw = (s._lw || 0) + 1; }
     const u = (clock - s._lt - .22) / .55; if (u >= 0 && u <= 1) { nod = Math.sin(u * Math.PI); nodWho = lis[s._lw % lis.length]; }
   }
+  // حياة المستمع: (1) انتقال وزن بطيء بين حين وآخر بتوقيت مختلف لكل شخص، (2) رد فعل على انفعال المتحدث: يتراجع عند دهشته ويتأثر عند حزنه
+  const main = s.dur - s.inT - s.outT; let spMode = 'talk', spF0 = 0, spF1 = 1;
+  (s.acts || []).forEach(([f, md], j) => { if (m >= f) { spMode = md; spF0 = f; spF1 = s.acts[j + 1] ? s.acts[j + 1][0] : 1; } });
+  const spT = (m - spF0) * main, react = LIFE() && lis.length && (spMode === 'awe' || spMode === 'sad') ? ease(spT / (spMode === 'awe' ? .3 : .9)) * ease((spF1 - m) * main / .6) : 0;
   list.forEach((id, i) => {
     if (id === spk) return; const c = wearOf(s, id);
     withCast(c, () => {
       const fr = frames.talk; if (!fr) return; const sv = { open: M.open, wide: M.wide, round: M.round, act: M.act }; M.open = M.wide = M.round = M.act = 0;
       const br = Math.sin(clock * 2.1 + i * 1.7);
-      blit('talk', 15 % fr.length, xs[i], c.scale || 1, 0, 1, { flip: flipFor(id, xs[i], sx), sy: 1 + .008 * br - (id === nodWho ? .012 * nod : 0), sx: 1 - .004 * br, rot: (sx > xs[i] ? 1 : -1) * (.01 + (id === nodWho ? .03 * nod : 0)) + Math.sin(clock * .8 + i) * .003, dx: Math.sin(clock * .55 + i * 2) * 2.4, dy: id === nodWho ? 3 * nod : 0, mouth: 1 });
+      const tw = LIFE() ? listenerShift(clock, i) : null, dr = sx > xs[i] ? 1 : -1, aw = spMode === 'awe' ? react : 0, sd = spMode === 'sad' ? react : 0;   // aw: تراجع للخلف مع ارتفاع طفيف، sd: انخفاض وميل نحو المتحدث
+      blit('talk', 15 % fr.length, xs[i], c.scale || 1, 0, 1, { flip: flipFor(id, xs[i], sx), sy: 1 + .008 * br - (id === nodWho ? .012 * nod : 0) - (tw ? .004 * tw.a : 0) + .016 * aw - .012 * sd, sx: 1 - .004 * br - .006 * aw, rot: dr * (.01 + (id === nodWho ? .03 * nod : 0) + .012 * sd) - dr * .028 * aw + Math.sin(clock * .8 + i) * .003 + (tw ? tw.d * .008 * tw.a : 0), dx: Math.sin(clock * .55 + i * 2) * 2.4 + (tw ? tw.d * 7 * tw.a : 0) - dr * 9 * aw, dy: (id === nodWho ? 3 * nod : 0) + 3 * sd, mouth: 1 });
       Object.assign(M, sv);
     });
   });
