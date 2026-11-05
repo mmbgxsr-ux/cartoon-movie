@@ -337,6 +337,7 @@ def test_full_package_roundtrip_on_fresh_browser(browser, base_url, page, tmp_pa
 
 def test_package_is_applied_only_once(page, tmp_path):
     pkg = _make_package(page, tmp_path)
+    page.once("dialog", lambda d: d.accept())   # الصفحة فيها عمل حالي، فيسأل التطبيق قبل الاستبدال
     page.set_input_files("#fPrj", str(pkg))
     # ننتظر رسالة الاستعادة (تظهر بعد إعادة التحميل). شرط bgs.length وحده يتحقق في الصفحة القديمة قبل إعادة التحميل.
     page.wait_for_function("window.CMPack && CMPack.ready && document.getElementById('msg').textContent.includes('تم استرجاع الحزمة') && bgs.length === 2", timeout=60000)
@@ -935,3 +936,34 @@ def test_editor_saves_sky_choice(page):
     page.wait_for_function("window.Store && Store.ready && typeof SHOTS !== 'undefined' && SHOTS[0].wx === 'rain' && document.querySelector('#eList select')", timeout=45000)
     assert page.evaluate("[SHOTS[0].lt, SHOTS[1].wx || null]") == ["night", None]
     assert page.errors == []
+
+
+# ---------- إصلاحات المراجعة ----------
+def test_malformed_scene_fields_do_not_break_boot(page):
+    bad = [{"h": "a", "bg": 2.5, "text": "مرحبا", "acts": [None, 5, ["x"]], "extra": -50}]
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(bad)))
+    reload(page)
+    assert page.evaluate("SHOTS.length") == 1
+    assert page.evaluate("SHOTS[0].bg") == 3 and page.evaluate("SHOTS[0].dur") > 0
+
+
+def test_legacy_localstorage_removed_after_migration(browser, base_url):
+    ctx = browser.new_context()
+    pg = ctx.new_page()
+    pg.goto(base_url + "/css/styles.css")
+    pg.evaluate("localStorage.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(SCENES)))
+    pg.goto(base_url + "/index.html")
+    pg.wait_for_function("window.Store && Store.ready && typeof SHOTS !== 'undefined'", timeout=20000)
+    assert pg.evaluate("localStorage.getItem('cartoonScenes1')") is None   # لا يعود بعد الحذف
+    ctx.close()
+
+
+def test_open_project_asks_before_replacing_work(page, tmp_path):
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(SCENES)))
+    f = tmp_path / "p.json"
+    f.write_text(json.dumps({"app": "cartoon-movie", "v": 1, "data": {"cartoonScenes1": json.dumps(SCENES[:1])}}), encoding="utf-8")
+    page.once("dialog", lambda d: d.dismiss())
+    page.set_input_files("#fPrj", str(f))
+    page.wait_for_function("document.getElementById('msg').textContent.includes('أُلغي')", timeout=5000)
+    assert page.evaluate("Store.getItem('cartoonScenes1')") == json.dumps(SCENES)
+
