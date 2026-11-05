@@ -88,12 +88,14 @@ $('bRep').onclick = async () => {
 const yieldNow = (() => { const mc = new MessageChannel(); return () => new Promise(r => { mc.port1.onmessage = () => r(); mc.port2.postMessage(0); }); })();
 async function exportExact(opt) {
   opt = opt || {};
-  if (playing || busy || EXPORTING) { if (EXPORTING) EXP_CANCEL = true; return; }
+  if (playing || busy || EXPORTING) { if (EXPORTING) EXP_CANCEL = true; else msg(playing ? 'التشغيل أو التسجيل ما زال جاريًا: اضغط «إيقاف» أولًا ثم أعد التصدير' : 'عملية أخرى جارية الآن (توليد صوت أو تصدير سابق)، انتظر انتهاءها أو أعد تحميل الصفحة'); return; }   // كان يرجع بصمت فيبدو الزر معطّلًا
   if (!bgs.length) { msg('اختر الخلفيات أولاً'); return; }
   if (!window.VideoEncoder || !window.AudioEncoder || !window.OfflineAudioContext || !window.VideoFrame) { msg('متصفحك لا يدعم التصدير الدقيق؛ استخدم Chrome حديثًا أو زر «تحميل الفيديو»'); return; }
   if (!useGem()) { msg('التصدير الدقيق يحتاج الصوت المرفق أو مفتاح Gemini (صوت الجهاز الآلي لا يمكن التقاطه)'); return; }
   fillRange(); const RF = Math.max(0, Math.min(SHOTS.length - 1, +$('sExpFrom').value || 0)), RT0 = +$('sExpTo').value, RT = RT0 < 0 ? SHOTS.length - 1 : Math.max(RF, Math.min(SHOTS.length - 1, RT0)), ranged = RF > 0 || RT < SHOTS.length - 1;   // نطاق المشاهد المراد تصديرها
-  busy = true; await EMBP; const okg = await genAll(opt.maxSec, RF, RT); busy = false; if (!okg) return; recalc();
+  msg('جاري تجهيز التصدير…'); busy = true; let okg = false;
+  try { await EMBP; okg = await genAll(opt.maxSec, RF, RT); } catch (e) { msg('تعذّر تجهيز الصوت: ' + errText(e)); } finally { busy = false; }   // بدون finally كان أي خطأ يترك busy=true فيتجاهل الزر كل الضغطات اللاحقة
+  if (!okg) return; recalc();
   let RANGE_T = 0; for (let k = RF; k <= RT; k++) RANGE_T += SHOTS[k].dur;
   const fps = +$('sFps').value || 30, TT = Math.min(RANGE_T, opt.maxSec || RANGE_T), N = Math.floor(TT * fps), SR = 48000, bitrate = +$('sQ').value || 1600000;
   let vcfg = null; for (const hw of (opt._sw ? ['no-preference'] : ['prefer-hardware', 'no-preference'])) { for (const c of ['avc1.640028', 'avc1.4d0028', 'avc1.42001f']) { const cfg = { codec: c, width: W, height: H, bitrate: Math.max(bitrate, fps > 30 ? 2500000 : 0), framerate: fps, avc: { format: 'avc' }, latencyMode: 'quality', hardwareAcceleration: hw }; try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) { vcfg = cfg; break; } } catch (_) { dbg(_); } } if (vcfg) break; }   // الأفضلية لمشفّر العتاد (أسرع بكثير)
@@ -161,7 +163,7 @@ async function exportExact(opt) {
     if (opt.preview) {   // تجريبي: نعرضه هنا للفحص ولا نبدأ تحميلًا
       const v = $('expPrev'); if (v) { if (v.dataset.url) URL.revokeObjectURL(v.dataset.url); v.dataset.url = url; v.src = url; v.hidden = false; }
       msg('تم التصدير التجريبي (' + (done / fps).toFixed(1) + ' ثانية، ' + (blob.size / 1048576).toFixed(1) + ' ميجابايت). افحص الجودة والتزامن أدناه قبل التصدير الكامل' + note + chkTxt);
-    } else { msg('تم التصدير (' + (blob.size / 1048576).toFixed(1) + ' ميجابايت)' + note + chkTxt); offerShare(blob, a.download); a.click(); }
+    } else { msg('تم التصدير (' + (blob.size / 1048576).toFixed(1) + ' ميجابايت)' + note + chkTxt + ' — إن لم يبدأ التحميل خلال ثوانٍ فاضغط رابط «تحميل الفيديو (MP4 دقيق)» أو زر المشاركة'); offerShare(blob, a.download); a.click(); }
   } catch (e) {
     try { LG.error = String(e && e.message || e).slice(0, 300); } catch (_) { dbg(_); }
     if (vcfg.hardwareAcceleration === 'prefer-hardware' && !opt._sw && !(e && e.message === 'cancel') && !EXP_CANCEL) { retrySw = true; msg('مشفّر العتاد لم يعمل على هذا الجهاز، نعيد التصدير بالمشفّر البرمجي (أبطأ لكنه أضمن)…'); console.warn('hw encoder failed, retrying in software', e); }
