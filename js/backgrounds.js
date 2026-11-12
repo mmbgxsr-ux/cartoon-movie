@@ -94,7 +94,7 @@ $('bUndo').onclick = () => { if (!bgBackup) return; bgs.length = 0; bgBackup.for
 // ===== ضبط موضع الشخصية (الأرض والمكان والحجم) لكل خلفية، يُحفظ في المتصفح =====
 (function () {
   const GK = 'cartoonGround1', DEF = { y: Object.assign({}, GRG), s: Object.assign({}, GRS), x: Object.assign({}, GRX) }; let GO = {};
-  try { GO = JSON.parse(Store.getItem(GK) || '{}'); } catch (_) { dbg(_); }
+  try { GO = asObj(JSON.parse(Store.getItem(GK) || '{}')); } catch (_) { dbg(_); }
   const save = () => { try { Store.setItem(GK, JSON.stringify(GO)); } catch (_) { dbg(_); } };
   const apply = k => {
     for (const [o, d] of [[GRG, DEF.y], [GRX, DEF.x], [GRS, DEF.s]]) { if (d[k] != null) o[k] = d[k]; else delete o[k]; }

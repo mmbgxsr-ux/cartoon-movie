@@ -136,7 +136,7 @@ function withCast(c, fn) {
 const _drawChar0 = drawChar;
 drawChar = function (s, tt) {
   const list = castList(s); if (list.length < 2 && list[0] === 'guide') return _drawChar0(s, tt);
-  CUR_BG = s.map || s.bg || 1; CUR_AMB = ambOf(CUR_BG); GROUND = GRG[CUR_BG] || 625; GSC = GRS[CUR_BG] || 1; ARR = tt;
+  CUR_BG = s.map || s.bg || 1; CUR_SKY = s; CUR_AMB = ambOf(CUR_BG); GROUND = GRG[CUR_BG] || 625; GSC = GRS[CUR_BG] || 1; ARR = tt;
   const n = list.length, xs = n === 1 ? [W * ((+($('rX') ? $('rX').value : 0) || 0.2))] : n === 2 ? [W * .24, W * .62] : n === 3 ? [W * .16, W * .42, W * .68] : [W * .12, W * .32, W * .52, W * .72];
   list.forEach((id, i) => { const p = s.pos && CAST_POS[s.pos[id]]; if (p != null) xs[i] = W * p; });
   const _sp = speakerAt(s, tt) || s.spk, spk = _sp && list.includes(_sp) ? _sp : list[0], sx = xs[list.indexOf(spk)];

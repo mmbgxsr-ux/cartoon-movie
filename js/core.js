@@ -1,3 +1,5 @@
+// قيمة مخزّنة تالفة (null أو رقم أو مصفوفة بدل كائن) كانت تُسقط وحدات كاملة عند الإقلاع: نقبل الكائن العادي فقط
+const asObj = v => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
 const PRECUT = {};   // نتيجة قص جاهزة من التخزين المؤقت (js/framecache.js) يستعملها build() بدل الحساب
 const PERF = { on: /[?&]perf\b/.test(location.search) };   // عدّاد الأداء: افتح الصفحة بإضافة ?perf=1 (يُعرَّف في js/perf.js)
 let QPOSE = null;   // وضعية الشخصية أثناء السؤال: { mode, t0 } (يضبطها js/decision.js)

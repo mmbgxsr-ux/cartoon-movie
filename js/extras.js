@@ -1,6 +1,6 @@
 // ===== نبض على مواضع الخرائط عند ذكر المنطقة (المواضع نسب من الصورة، ويمكن ضبطها بالضغط) =====
 const PULSE = {};
-const PK = 'cartoonPulse1'; let PO = {}; try { PO = JSON.parse(Store.getItem(PK) || '{}'); } catch (_) { dbg(_); }
+const PK = 'cartoonPulse1'; let PO = {}; try { PO = asObj(JSON.parse(Store.getItem(PK) || '{}')); } catch (_) { dbg(_); }
 const pts = k => PO[k] || PULSE[k];
 function drawPulse(p, pw, ph, chh) {
   if (!$('cPulse').checked) return; const arr = pts(p.id + '|' + p.cap); if (!arr) return;

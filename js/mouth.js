@@ -182,12 +182,12 @@ function updateMouth(dt, s) {
 const mkey = n => { const im = imgs[n], c = SH[n]; return n + '|' + im.naturalWidth + 'x' + im.naturalHeight + '|' + c.cols + 'x' + c.rows.length; };
 function loadMouths(n) {
   try {
-    const all = JSON.parse(Store.getItem('mouths_v3') || '{}'), arr = all[mkey(n)], fr = frames[n];
+    const all = asObj(JSON.parse(Store.getItem('mouths_v3') || '{}')), arr = all[mkey(n)], fr = frames[n];
     if (arr && fr && arr.length === fr.length) arr.forEach((m, i) => { if (m) fr[i].mouth = m; });
   } catch (_) { dbg(_); }
 }
 function saveMouths(n) {
-  try { const all = JSON.parse(Store.getItem('mouths_v3') || '{}'); all[mkey(n)] = frames[n].map(f => f.mouth); Store.setItem('mouths_v3', JSON.stringify(all)); } catch (_) { dbg(_); }
+  try { const all = asObj(JSON.parse(Store.getItem('mouths_v3') || '{}')); all[mkey(n)] = frames[n].map(f => f.mouth); Store.setItem('mouths_v3', JSON.stringify(all)); } catch (_) { dbg(_); }
   eyesAll(n);   // مكان العينين يُحسب من الفم، فيُعاد حسابه كلما تغيّر الفم
 }
 function frameJpeg(f) {
@@ -235,7 +235,7 @@ function mRecenter() { const f = curF(); if (!f) return; const z = +$('mZoom').v
 const mPos = f => { const m = f.mouth; if (mFS) { const sc = 1000 / mV.vh; return { x: (m.x - mV.vx) * sc, y: (m.y - mV.vy) * sc }; } const sc = 340 / f.height; return { x: m.x * sc, y: m.y * sc }; };
 const mHandle = p => { const R = mFS ? 110 : 38, a = ((curF().mouth.r || 0) * Math.PI) / 180; return { x: p.x + R * Math.cos(a), y: p.y + R * Math.sin(a) }; };
 function drawMouthPrev() {
-  CUR_AMB = null; const f = curF(); $('mNum').textContent = mFr.value; mouthInfo(); { const fm = f && f.mouth; $('mR').value = fm ? (fm.r || 0) : 0; $('mRv').textContent = Math.round(fm ? (fm.r || 0) : 0) + '°'; } $('mZv').textContent = (+$('mZoom').value) + '×';
+  CUR_AMB = null; CUR_SKY = null; const f = curF(); $('mNum').textContent = mFr.value; mouthInfo(); { const fm = f && f.mouth; $('mR').value = fm ? (fm.r || 0) : 0; $('mRv').textContent = Math.round(fm ? (fm.r || 0) : 0) + '°'; } $('mZv').textContent = (+$('mZoom').value) + '×';
   if (!f) { mg.clearRect(0, 0, mc.width, mc.height); return; }
   const m = f.mouth, MP = { open: .7, wide: .2, round: 0, act: 1 };
   if (mFS) {                                                  // ملء الشاشة: عرض مكبّر حول الوجه، الإحداثيات تُحوَّل حسب نافذة العرض

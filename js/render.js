@@ -13,7 +13,17 @@ function wrap(text, maxW) {
 
 let EXPORTING = false, EXP_END = false;
 let idx = 0, t = 0, playing = false, last = performance.now(), clock = 0, spoken = false, rec = null, chunksRec = [], recExt = 'mp4', recMime = 'video/mp4';
-let LASTSH = null, FGC = null, GROUND = H - 130, GSC = .94, CUR_BG = 1, CUR_AMB = null;   // الأرض والمنظور واللون المحيط تتبع كل مشهد
+let LASTSH = null, FGC = null, GROUND = H - 130, GSC = .94, CUR_BG = 1, CUR_AMB = null, CUR_SKY = null;   // الأرض والمنظور واللون المحيط تتبع كل مشهد
+// تأثير إضاءة المشهد (s.lt) وطقسه (s.wx) على ظل الشخصية وحافة الضوء: sh شدة الظل، len طوله، rim شدة حافة الضوء، col لونها.
+// بلا إضاءة أو طقس تبقى القيم 1 فلا يتغير شيء. ليلًا أو في الغيم والمطر يخفّ الظل وتخفت الحافة، وعند الفجر والغروب يطول الظل وتدفأ الحافة.
+const SKYFX_LT = { dawn: { sh: 1, len: 1.7, rim: 1.05, col: [255, 200, 190] }, sunset: { sh: 1.1, len: 2, rim: 1.2, col: [255, 170, 110] }, night: { sh: .35, len: .6, rim: .35, col: [150, 175, 255] }, overcast: { sh: .3, len: .5, rim: .2, col: [225, 232, 240] } };
+const SKYFX_WX = { rain: { sh: .3, rim: .2 }, storm: { sh: .25, rim: .15 }, fog: { sh: .5, rim: .4 }, snow: { sh: .75, rim: .8 } };
+const SKYFX_ONE = { sh: 1, len: 1, rim: 1, col: [255, 236, 200], key: '' };
+function skyFx() {
+  const s = CUR_SKY; if (!s || (!s.lt && !s.wx)) return SKYFX_ONE;
+  const a = SKYFX_LT[s.lt] || SKYFX_ONE, w = SKYFX_WX[s.wx];
+  return { sh: a.sh * (w ? w.sh : 1), len: a.len, rim: a.rim * (w ? w.rim : 1), col: a.col, key: (s.lt || '') + '|' + (s.wx || '') };
+}
 const LIGHT = { 5: -.8, 9: .4, 12: .9, 14: .3, 15: .5, 1: .6 };        // اتجاه الضوء: موجب = الظل نحو اليمين
 // نوع الأرض لكل خلفية: يحدد الغبار/الماء/الفقاعات/الانعكاس وصوت الخطوات (الافتراضي: غبار رمل/تراب)
 const GTYPE = { 1: 'gloss', 14: 'gloss', 5: 'snow', 6: 'grass', 7: 'grass', 9: 'pebble', 12: 'water', 13: 'wet', 15: 'none' }, GLOSS = { 1: 1, 14: .45 };
@@ -50,13 +60,13 @@ function tinted(f) {
 }
 // ===== حافة ضوء (rim light) على جهة الشمس + لون الأرض للظل =====
 function rimOf(f) {
-  const A = CUR_AMB, L = Math.max(-1, Math.min(1, LIGHT[CUR_BG] != null ? LIGHT[CUR_BG] : .5)), dim = A ? A.dim : 0, key = CUR_BG + '|' + Math.round(L * 10) + '|' + Math.round(dim * 20);
+  const A = CUR_AMB, L = Math.max(-1, Math.min(1, LIGHT[CUR_BG] != null ? LIGHT[CUR_BG] : .5)), dim = A ? A.dim : 0, SK = skyFx(), key = CUR_BG + '|' + Math.round(L * 10) + '|' + Math.round(dim * 20) + '|' + SK.key;
   if (f._rim && f._rim.key === key) return f._rim.c;
-  const k = Math.min(.7, (.28 + .42 * Math.abs(L)) * (1 - dim * 1.4)); if (k < .04) return null;
+  const k = Math.min(.7, (.28 + .42 * Math.abs(L)) * (1 - dim * 1.4) * SK.rim); if (k < .04) return null;
   const c = f._rim ? f._rim.c : document.createElement('canvas'); c.width = f.width; c.height = f.height; const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height); g.drawImage(f, 0, 0);
   const d = Math.max(2, f.height * .0042); if ('filter' in g) g.filter = 'blur(' + (d * .35).toFixed(1) + 'px)';
   g.globalCompositeOperation = 'destination-out'; g.drawImage(f, (L >= 0 ? 1 : -1) * d, d * .55); g.filter = 'none';   // يبقى هلال رفيع على الحافة المواجهة للضوء
-  g.globalCompositeOperation = 'source-in'; g.fillStyle = 'rgba(255,236,200,' + k.toFixed(3) + ')'; g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'source-in'; g.fillStyle = 'rgba(' + SK.col[0] + ',' + SK.col[1] + ',' + SK.col[2] + ',' + k.toFixed(3) + ')'; g.fillRect(0, 0, c.width, c.height);
   if (A) {   // التفاف الضوء: لون الخلفية/السماء يلفّ الحافة البعيدة عن الشمس بلمسة خفيفة
     const Sk = A.sky || A, w = document.createElement('canvas'); w.width = f.width; w.height = f.height; const q = w.getContext('2d'); q.drawImage(f, 0, 0);
     const d2 = Math.max(3, f.height * .0075); if ('filter' in q) q.filter = 'blur(' + (d2 * .5).toFixed(1) + 'px)';
@@ -147,7 +157,7 @@ function blit(name, i, x, scl, dy, alpha, o) {
   ctx.translate(x + (o.dx || 0), GROUND + dy + (o.dy || 0));                      // نقطة الارتكاز عند القدمين
   if (o.rot) ctx.rotate(o.rot); if (o.sx || o.sy) ctx.scale(o.sx || 1, o.sy || 1);
   { // ظل ساقط واقعي على الأرض من شكل الشخصية نفسه
-    const L = LIGHT[CUR_BG] != null ? LIGHT[CUR_BG] : .55; ctx.save(); ctx.globalAlpha = Math.min(1, alpha) * .40; ctx.transform(1, 0, -L * .5, -.11, 0, 0); if (FL) ctx.scale(-1, 1); if ('filter' in ctx) ctx.filter = 'blur(' + Math.max(2, 5 * sc).toFixed(1) + 'px)';
+    const L = LIGHT[CUR_BG] != null ? LIGHT[CUR_BG] : .55; const SK = skyFx(); ctx.save(); ctx.globalAlpha = Math.min(1, alpha) * .40 * Math.min(1.25, SK.sh); ctx.transform(1, 0, -L * .5 * SK.len, -.11 * Math.max(.6, SK.len), 0, 0); if (FL) ctx.scale(-1, 1); if ('filter' in ctx) ctx.filter = 'blur(' + Math.max(2, 5 * sc).toFixed(1) + 'px)';
     ctx.drawImage(silh(f), -f.ax * sc, -f.bb.y1 * sc, f.width * sc, f.height * sc); ctx.restore(); }
   if (GLOSS[CUR_BG] && gOn() && !greenOn()) {   // أرضية لامعة (المركبة): انعكاس باهت يتلاشى بالعمق
     const img = tinted(f), gk = GLOSS[CUR_BG];
@@ -169,7 +179,7 @@ function inked(f) {
   g.globalAlpha = 1; g.drawImage(T, 0, 0); f._ik = { t: T, bg: CUR_BG, c }; return c;
 }
 function shadow(x, w, a) {
-  a = a == null ? 1 : a; LASTSH = [x, w, a]; ctx.save(); ctx.globalAlpha = .62 * a; ctx.translate(x, GROUND + 3); ctx.scale(1, .13);
+  a = a == null ? 1 : a; LASTSH = [x, w, a]; ctx.save(); ctx.globalAlpha = .62 * a * (.55 + .45 * Math.min(1, skyFx().sh)); ctx.translate(x, GROUND + 3); ctx.scale(1, .13);
   const cr = $('cRim') && $('cRim').checked ? groundCol().map(v => Math.round(v * .2)) : [0, 0, 0], cs = cr[0] + ',' + cr[1] + ',' + cr[2];   // ظل بلون الأرض المعتّم لا أسود صرف
   const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 1.15); g.addColorStop(0, 'rgba(' + cs + ',.75)'); g.addColorStop(.6, 'rgba(' + cs + ',.35)'); g.addColorStop(1, 'rgba(' + cs + ',0)');
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, w * 1.15, 0, 7); ctx.fill();
@@ -274,7 +284,7 @@ function drawMulti(s, tt) {   // طبقة أمامية خفيفة: أوراق ب
   ctx.restore(); ctx.globalAlpha = 1;
 }
 function drawChar(s, tt) {
-  const RN = !!(s.run && frames.run); ARR = s.noWalk ? tt : tt - (s.inT + XF); CUR_BG = s.map || s.bg || 1; CUR_AMB = ambOf(CUR_BG); GROUND = GRG[CUR_BG] || 625; GSC = GRS[CUR_BG] || 1;
+  const RN = !!(s.run && frames.run); ARR = s.noWalk ? tt : tt - (s.inT + XF); CUR_BG = s.map || s.bg || 1; CUR_SKY = s; CUR_AMB = ambOf(CUR_BG); GROUND = GRG[CUR_BG] || 625; GSC = GRS[CUR_BG] || 1;
   const X = W * (GRX[CUR_BG] && +$('rX').value === 0.2 ? GRX[CUR_BG] : (+($('rX') ? $('rX').value : s.x) || s.x)), x0 = W * -0.15, x1 = W * 1.15, mainEnd = s.dur - s.outT;
   if (!s.noWalk && tt < s.inT) {
     if (!(RN || frames.walk)) { drawStand(s, 0, X, 1); return; }
