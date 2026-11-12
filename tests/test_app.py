@@ -916,6 +916,37 @@ def test_scene_sky_draws_and_darkens(page):
     assert page.errors == []
 
 
+def test_shadow_and_rim_follow_scene_light_and_weather(page):
+    # بلا إضاءة أو طقس لا يتغير شيء؛ الليل والغيم والمطر يخففون الظل؛ الغروب يطيله ويدفّئ حافة الضوء
+    one = page.evaluate("CUR_SKY = null, skyFx()")
+    assert (one["sh"], one["len"], one["rim"]) == (1, 1, 1)
+    fx = lambda o: page.evaluate("(o) => { CUR_SKY = o; return skyFx(); }", o)
+    assert fx({"lt": "night"})["sh"] < .5 and fx({"lt": "overcast"})["sh"] < .5 and fx({"wx": "rain"})["sh"] < .5
+    sun = fx({"lt": "sunset"})
+    assert sun["len"] > 1.5 and sun["col"][0] > sun["col"][2]
+    assert fx({"lt": "night", "wx": "storm"})["sh"] < fx({"lt": "night"})["sh"]
+    scenes = _cam_scenes({1: {"lt": "sunset"}, 2: {"lt": "night", "wx": "rain"}})
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
+    reload(page)
+    page.wait_for_timeout(1000)
+    for i in range(3):
+        page.evaluate("(i) => { idx = i; t = SHOTS[i].inT + 1; clock = 5 + i; tickSim(0); }", i)
+    assert page.errors == []
+
+
+def test_status_message_tone_follows_text(page):
+    # الرسالة تتلوّن بحسب نوعها (تعليمة/نجاح/خطأ) دون تغيير نصها
+    def tone(t):
+        page.evaluate("(t) => msg(t)", t)
+        page.wait_for_timeout(60)
+        return page.evaluate("document.getElementById('msg').dataset.tone || ''")
+    assert tone("ارفع الخلفيات وملفات الصوت ثم اضغط تشغيل") == "info"
+    assert tone("تم الحفظ") == "ok"
+    assert tone("تعذّر قراءة الملف") == "err"
+    assert tone("") == ""
+    assert page.errors == []
+
+
 def test_weather_amount_fades_between_scenes(page):
     scenes = _cam_scenes({1: {"wx": "rain"}, 2: {"wx": "rain"}})
     page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(scenes)))
@@ -945,6 +976,17 @@ def test_malformed_scene_fields_do_not_break_boot(page):
     reload(page)
     assert page.evaluate("SHOTS.length") == 1
     assert page.evaluate("SHOTS[0].bg") == 3 and page.evaluate("SHOTS[0].dur") > 0
+
+
+@pytest.mark.parametrize("key", ["cartoonMovieSettings1", "cartoonGround1", "cartoonPulse1", "mouths_v3"])
+@pytest.mark.parametrize("raw", ["null", "5", "[]", '"x"'])
+def test_non_object_stored_values_do_not_break_boot(page, key, raw):
+    # مشروع أو تخزين تالف قد يحمل JSON صالحًا لكنه ليس كائنًا (null أو رقم...): كان يُسقط settings.js وbackgrounds.js عند الإقلاع
+    page.evaluate("Store.setItem(%s, %s)" % (json.dumps(key), json.dumps(raw)))
+    page.errors.clear()
+    reload(page)
+    assert page.evaluate("document.getElementById('tabs').children.length") > 0
+    assert page.errors == []
 
 
 def test_legacy_localstorage_removed_after_migration(browser, base_url):

@@ -26,6 +26,7 @@ def test_share_button_hidden_by_default(page):
 
 
 def test_ready_real_walk_cycle_loads_into_studio(page):
+    page.click("#tab2")   # الزر داخل تبويب «دورة المشي»، والتبويب الافتراضي «البدء السريع»
     page.click("#wcReal")
     page.wait_for_function("document.getElementById('wcGrid').children.length === 7", timeout=10000)
     assert page.evaluate("WALKPRESET.length") == 7
