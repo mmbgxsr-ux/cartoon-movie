@@ -1017,3 +1017,105 @@ def test_fullscreen_button_toggles(page):
     page.wait_for_function("!document.fullscreenElement && !document.querySelector('.stage').classList.contains('pseudoFS')", timeout=5000)
     assert "شاشة كاملة" in page.inner_text("#bFull")
 
+
+
+# ---------- أصوات أسطر الحوار (ملف لكل سطر بصوت صاحبه) ----------
+CAST2 = [{"id": "guide", "name": "المرشد", "top": "", "bottom": "", "acc": "", "accColor": "#f3ead2", "scale": 1, "voice": ""},
+         {"id": "amr", "name": "عمرو", "top": "", "bottom": "", "acc": "", "accColor": "#f3ead2", "scale": 1, "voice": "Fenrir"}]
+DLG = [{"h": "حوار", "bg": 1, "text": "x", "acts": [[0, "talk"]], "props": [], "cast": ["guide", "amr"],
+        "lines": [{"spk": "guide", "t": "السطر الأول من الحوار"}, {"spk": "amr", "t": "السطر الثاني من الحوار"}]}]
+
+
+def _dialogue_page(page, tmp_path, secs=(1.0, 2.0)):
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(DLG)))
+    page.evaluate("Store.setItem('cartoonCast1', %s)" % json.dumps(json.dumps(CAST2)))
+    reload(page)
+    files = []
+    for i, sec in enumerate(secs):
+        f = tmp_path / ("0%d.wav" % (i + 1))
+        f.write_bytes(_wav(sec))
+        files.append(str(f))
+    open_tab(page, "#fLineAud")
+    page.evaluate("document.getElementById('dLineAud').open = true")   # القائمة داخل details مغلق افتراضيًا
+    return files
+
+
+def test_line_audio_builds_scene_audio_without_gemini(page, tmp_path):
+    files = _dialogue_page(page, tmp_path)
+    assert page.evaluate("useGem()") is False and page.evaluate("!!AB(SHOTS[0])") is False
+    page.set_input_files("#fLineAud", files)
+    page.wait_for_function("SHOTS[0].cust === true", timeout=20000)
+    T = page.evaluate("SHOTS[0].lineT")
+    assert [x["id"] for x in T] == ["guide", "amr"] and all(x.get("c") == 1 for x in T)
+    assert 0.9 < T[0]["b"] - T[0]["a"] < 1.1 and 1.9 < T[1]["b"] - T[1]["a"] < 2.1
+    assert abs(T[1]["a"] - (T[0]["b"] + 0.3)) < 0.01, "فاصل ثابت بين السطرين"
+    assert page.evaluate("!!AB(SHOTS[0])") and page.evaluate("useGem()") is True       # صوت جاهز بلا مفتاح
+    assert page.evaluate("SHOTS[0].main") > 3.3 + 0.3                                  # المدة من الصوت الفعلي
+    # المتحدث يتبدل بأزمنة الأسطر الفعلية لا بنسبة النص
+    assert page.evaluate("[speakerAt(SHOTS[0], SHOTS[0].inT + .4), speakerAt(SHOTS[0], SHOTS[0].inT + 2.0)]") == ["guide", "amr"]
+    assert page.locator("#lineAud .laState").all_inner_texts() == ["✔ 01.wav", "✔ 02.wav"]
+    assert "2 / 2" in page.inner_text("#laStat")
+    assert page.errors == []
+
+
+def test_line_audio_partial_scene_needs_the_rest(page, tmp_path):
+    files = _dialogue_page(page, tmp_path)
+    page.set_input_files("#lineAud .row[data-line='0'] input[type=file]", files[0])
+    page.wait_for_function("SHOTS[0].lineAud && SHOTS[0].lineAud[0]", timeout=20000)
+    assert page.evaluate("SHOTS[0].cust") is not True and page.evaluate("!!AB(SHOTS[0])") is False   # ناقص: لا صوت جاهز
+    assert "1 / 2" in page.inner_text("#laStat") and "ينقص 1 من 2" in page.inner_text("#lineAud")
+    assert page.errors == []
+
+
+def test_line_audio_mixes_with_generated_lines(page, tmp_path):
+    files = _dialogue_page(page, tmp_path)
+    page.set_input_files("#lineAud .row[data-line='0'] input[type=file]", files[0])
+    page.wait_for_function("SHOTS[0].lineAud && SHOTS[0].lineAud[0]", timeout=20000)
+    out = page.evaluate("""async () => {
+        $('kKey').value = 'k'.repeat(12); window.__gen = [];
+        window.gen = async tmp => { window.__gen.push(tmp.text); tmp.pcm = new Int16Array(24000); tmp.adur = 1; };
+        const ok = await genAll(), s = SHOTS[0];
+        return { ok, gen: window.__gen, c: s.lineT.map(x => x.c || 0), cust: s.cust, n: s.pcm.length, again: await (async () => { window.__gen = []; await genAll(); return window.__gen.length; })() };
+    }""")
+    assert out["ok"] is True and out["gen"] == ["السطر الثاني من الحوار"], "السطر المرفوع لا يُولَّد بـ Gemini"
+    assert out["c"] == [1, 0] and out["cust"] is False
+    assert abs(out["n"] - (1.0 + 0.3 + 1.0) * 24000) < 24000 * 0.05
+    assert out["again"] == 0, "لا إعادة توليد ما دام كل شيء كما هو"
+    assert page.errors == []
+
+
+def test_line_audio_removal_invalidates_scene_audio(page, tmp_path):
+    files = _dialogue_page(page, tmp_path)
+    page.set_input_files("#fLineAud", files)
+    page.wait_for_function("SHOTS[0].cust === true", timeout=20000)
+    page.click("#lineAud .row[data-line='1'] button")
+    assert page.evaluate("[SHOTS[0].cust, !!SHOTS[0].abuf, !!SHOTS[0].lineAud[1], !!SHOTS[0].lineAud[0]]") == [False, False, False, True]
+    assert "1 / 2" in page.inner_text("#laStat")
+    assert page.errors == []
+
+
+def test_line_audio_survives_package_roundtrip(browser, base_url, page, tmp_path):
+    import base64
+    files = _dialogue_page(page, tmp_path)
+    page.set_input_files("#fLineAud", files)
+    page.wait_for_function("SHOTS[0].cust === true", timeout=20000)
+    b64 = page.evaluate("""CMPack.build().then(async r => { const u = new Uint8Array(await r.blob.arrayBuffer()); let s = ''; for (let i = 0; i < u.length; i += 8192) s += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); return btoa(s); })""")
+    pkg = tmp_path / "p.zip"
+    pkg.write_bytes(base64.b64decode(b64))
+    import zipfile
+    with zipfile.ZipFile(pkg) as z:
+        assert len([n for n in z.namelist() if n.startswith("lineaud/")]) == 2
+    ctx = browser.new_context(accept_downloads=True)
+    pg = ctx.new_page()
+    errs = []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    pg.goto(base_url + "/index.html")
+    pg.wait_for_function("window.Store && Store.ready && typeof SHOTS !== 'undefined' && window.CMPack && CMPack.ready", timeout=20000)
+    pg.set_input_files("#fPrj", str(pkg))
+    pg.wait_for_function("window.CMPack && CMPack.ready && SHOTS.length === 1 && SHOTS[0].lines && SHOTS[0].lineAud && SHOTS[0].lineAud[1]", timeout=60000)
+    pg.wait_for_function("document.getElementById('msg').textContent.includes('تم استرجاع الحزمة')", timeout=20000)
+    assert "صوت لأسطر الحوار" in pg.evaluate("document.getElementById('msg').textContent")
+    assert pg.evaluate("[SHOTS[0].cust, !!AB(SHOTS[0]), SHOTS[0].lineT.length]") == [True, True, 2]
+    assert pg.evaluate("document.querySelector('#laStat').textContent").startswith("2 / 2")
+    assert errs == []
+    ctx.close()

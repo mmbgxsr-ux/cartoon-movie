@@ -3,9 +3,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const ac = () => { if (!AC) { AC = new (window.AudioContext || window.webkitAudioContext)(); DEST = AC.createMediaStreamDestination(); AN = AC.createAnalyser(); AN.fftSize = 1024; AN.smoothingTimeConstant = 0.15; } return AC; };
 const gemKey = () => $('kKey').value.trim().length > 10;
 const EMBON = () => $('cEmb').checked && SHOTS.every(s => s.eb);
-const useGem = () => $('cTts').checked && (EMBON() || gemKey());
-const AB = s => !$('cTts').checked ? null : EMBON() ? s.eb : (gemKey() ? s.abuf : null);
-const AD = s => EMBON() ? s.ed : s.adur;
+// مشهد حوار صوت كل أسطره مرفوع (s.cust): صوته جاهز بلا Gemini. ملفات المشاهد الكاملة (EMBON) تتقدّم عليه إن اكتملت
+const custOn = s => !!(s.cust && s.abuf && !EMBON());
+const custOk = s => !!(s.cust && s.abuf && s.lineT && s.lines && s.lineT.length === s.lines.length && s.lineT.every((x, k) => x.id === (s.lines[k].spk || 'guide')));
+const useGem = () => $('cTts').checked && (EMBON() || gemKey() || SHOTS.some(custOn));
+const AB = s => !$('cTts').checked ? null : custOn(s) ? s.abuf : EMBON() ? s.eb : (gemKey() ? s.abuf : null);
+const AD = s => custOn(s) ? s.adur : EMBON() ? s.ed : s.adur;
+const voOf1 = s => (typeof voiceOf === 'function' && voiceOf(s)) || $('sGv').value;
+// مفتاح توليد المشهد: صوت كل سطر ونصه، أو توقيع الملف المرفوع (U:) فيُعاد التوليد إن تغيّر أيٌّ منها
+const voKey = s => (s.lines && s.lines.length ? s.lines.map((L, k) => { const u = s.lineAud && s.lineAud[k]; return u ? 'U:' + u.sig : voOf1({ spk: L.spk }) + '|' + L.t; }).join('¦') : voOf1(s)) + $('sGm').value;
 try { $('kKey').value = Store.getItem('gk') || ''; } catch (_) { dbg(_); }
 $('kKey').oninput = () => { try { Store.setItem('gk', $('kKey').value.trim()); } catch (_) { dbg(_); } };
 $('kDel').onclick = () => { $('kKey').value = ''; try { Store.removeItem('gk'); } catch (_) { dbg(_); } msg('تم حذف المفتاح من هذا المتصفح'); };
@@ -30,23 +36,23 @@ async function gen(s) {
 }
 // مشهد حوار: يُولَّد صوت كل سطر بصوت صاحبه ثم تُدمج في مقطع واحد، ويُسجَّل وقت كل سطر (lineT) ليعرف الرسم من يتكلم
 async function genLines(s) {
-  const GAP = .3, R = 24000, parts = [], T = []; let t = 0;
+  const GAP = .3, R = 24000, parts = [], T = []; let t = 0, allU = true, called = false;
   for (let k = 0; k < s.lines.length; k++) {
-    const L = s.lines[k], tmp = { spk: L.spk === 'guide' ? undefined : L.spk, text: L.t };
-    if (k) await sleep(800);
-    await gen(tmp);
+    const L = s.lines[k], tmp = { spk: L.spk === 'guide' ? undefined : L.spk, text: L.t }, ud = s.lineAud && s.lineAud[k];   // ud: ملف مرفوع لهذا السطر (بصوت صاحبه) بدل Gemini
+    if (ud) { tmp.pcm = ud.pcm; tmp.adur = ud.pcm.length / R; }
+    else { allU = false; if (called) await sleep(800); called = true; await gen(tmp); }
     if (k) { parts.push(new Int16Array(Math.round(GAP * R))); t += GAP; }
-    parts.push(tmp.pcm); T.push({ id: L.spk || 'guide', a: t, b: t + tmp.adur }); t += tmp.adur;
+    parts.push(tmp.pcm); T.push(ud ? { id: L.spk || 'guide', a: t, b: t + tmp.adur, c: 1 } : { id: L.spk || 'guide', a: t, b: t + tmp.adur }); t += tmp.adur;
   }
   const n = parts.reduce((q, p) => q + p.length, 0), pcm = new Int16Array(n); let o = 0; parts.forEach(p => { pcm.set(p, o); o += p.length; });
   const buf = ac().createBuffer(1, n, R), ch = buf.getChannelData(0); for (let i = 0; i < n; i++) ch[i] = pcm[i] / 32768;
-  s.pcm = pcm; s.abuf = buf; s.adur = buf.duration; s.lineT = T;
+  s.pcm = pcm; s.abuf = buf; s.adur = buf.duration; s.lineT = T; s.cust = allU;
 }
 async function genAll(maxSec, from, to) {   // maxSec (اختياري): نتوقف عن توليد الصوت بعد هذا الزمن من الفيلم (للتصدير التجريبي)
-  if (EMBON() || !gemKey() || !$('cTts').checked) return true; ac(); const vo1 = s => (typeof voiceOf === 'function' && voiceOf(s)) || $('sGv').value, vk = s => (s.lines && s.lines.length ? s.lines.map(L => vo1({ spk: L.spk }) + '|' + L.t).join('¦') : vo1(s)) + $('sGm').value;
+  if (EMBON() || !gemKey() || !$('cTts').checked) return true; ac(); const vk = voKey;
   try {
     if (!maxSec) {   // توليد متوازٍ (3 طلبات معًا): أسرع بكثير من المشاهد واحدًا بعد الآخر، وإعادة المحاولة عند حد الطلبات موجودة في gen()
-      const todo = []; SHOTS.forEach((s, i) => { if ((from == null || i >= from) && (to == null || i <= to) && !(s.abuf && s.gk === vk(s))) todo.push(i); });
+      const todo = []; SHOTS.forEach((s, i) => { if ((from == null || i >= from) && (to == null || i <= to) && !(s.abuf && (s.gk === vk(s) || custOk(s)))) todo.push(i); });
       let nx = 0, fin = 0, failed = false; msg('جاري توليد الصوت 0 من ' + todo.length + ' …');
       await Promise.all([0, 1, 2].map(async () => {
         while (!failed && nx < todo.length) { const s = SHOTS[todo[nx++]], v = vk(s); try { await (s.lines && s.lines.length ? genLines(s) : gen(s)); } catch (e) { failed = true; throw e; } s.gk = v; fin++; msg('جاري توليد الصوت ' + fin + ' من ' + todo.length + ' …'); }
@@ -57,7 +63,7 @@ async function genAll(maxSec, from, to) {   // maxSec (اختياري): نتوق
     for (let i = from || 0; i < (to == null ? SHOTS.length : to + 1); i++) {
       if (maxSec && acc >= maxSec) break;
       const s = SHOTS[i], v = vk(s);
-      if (!(s.abuf && s.gk === v)) { msg('جاري توليد الصوت ' + (i + 1) + ' من ' + SHOTS.length + ' …'); await (s.lines && s.lines.length ? genLines(s) : gen(s)); s.gk = v; await sleep(800); }
+      if (!(s.abuf && (s.gk === v || custOk(s)))) { msg('جاري توليد الصوت ' + (i + 1) + ' من ' + SHOTS.length + ' …'); await (s.lines && s.lines.length ? genLines(s) : gen(s)); s.gk = v; await sleep(800); }
       if (maxSec) { recalc(); acc += s.dur; }   // المدة الفعلية بعد التوليد تحدد بداية المشهد التالي
     }
     msg(''); recalc(); return true;
@@ -66,12 +72,13 @@ async function genAll(maxSec, from, to) {   // maxSec (اختياري): نتوق
 $('bWav').onclick = async () => {
   if (!useGem()) { msg('أدخل مفتاح Gemini أولاً (صوت الجهاز لا يمكن حفظه كملف)'); return; } if (busy) return; busy = true;
   let ok = false; try { await EMBP; ok = await genAll(); } finally { busy = false; } if (!ok) return; recalc();
+  const miss = SHOTS.findIndex(s => !(custOn(s) ? s.pcm : EMBON() ? s.eb : s.pcm)); if (miss >= 0) { msg('لا يوجد صوت مسجَّل للمشهد ' + (miss + 1) + ': أدخل مفتاح Gemini أو ارفع صوته'); return; }
   const R = EMBON() ? AC.sampleRate : 24000, out = new Int16Array(Math.ceil(TOTAL * R)); let o = 0; SHOTS.forEach(s => { out.set(pcmOf(s), Math.round((o + s.inT) * R)); o += s.dur; });
   const h = new DataView(new ArrayBuffer(44)), w = (i, t) => [...t].forEach((c, k) => h.setUint8(i + k, c.charCodeAt(0)));
   w(0, 'RIFF'); h.setUint32(4, 36 + out.length * 2, true); w(8, 'WAVEfmt '); h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, 1, true); h.setUint32(24, R, true); h.setUint32(28, R * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true); w(36, 'data'); h.setUint32(40, out.length * 2, true);
   const a = $('dlA'); if (a.dataset.url) { try { URL.revokeObjectURL(a.dataset.url); } catch (_) { dbg(_); } } a.href = a.dataset.url = URL.createObjectURL(new Blob([h, out], { type: 'audio/wav' })); a.textContent = 'تحميل الصوت'; msg('تم تجهيز ملف الصوت وبدأ التحميل'); a.click();
 };
-const pcmOf = s => EMBON() ? Int16Array.from(s.eb.getChannelData(0), v => Math.max(-32768, Math.min(32767, Math.round(v * 32767)))) : s.pcm;
+const pcmOf = s => custOn(s) ? s.pcm : EMBON() ? Int16Array.from(s.eb.getChannelData(0), v => Math.max(-32768, Math.min(32767, Math.round(v * 32767)))) : s.pcm;
 // قصّ الصمت الزائد: بداية ونهاية كل مقطع، والوقفات الداخلية الأطول من 0.6 ثانية تُختصر إلى نحو 0.5 (الوقفات الطبيعية بين الجمل تبقى كما هي)
 function tightAudio(ab) {
   try {

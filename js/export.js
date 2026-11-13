@@ -96,6 +96,7 @@ async function exportExact(opt) {
   msg('جاري تجهيز التصدير…'); busy = true; let okg = false;
   try { await EMBP; okg = await genAll(opt.maxSec, RF, RT); } catch (e) { msg('تعذّر تجهيز الصوت: ' + errText(e)); } finally { busy = false; }   // بدون finally كان أي خطأ يترك busy=true فيتجاهل الزر كل الضغطات اللاحقة
   if (!okg) return; recalc();
+  { const nA = SHOTS.slice(RF, RT + 1).filter(s => !AB(s)).length; if (nA) { msg('لا يمكن التصدير الدقيق: ' + nA + ' مشهد بلا صوت مسجَّل. أدخل مفتاح Gemini أو ارفع صوتًا لكل مشهد (أو لكل أسطر الحوار)'); return; } }
   let RANGE_T = 0; for (let k = RF; k <= RT; k++) RANGE_T += SHOTS[k].dur;
   const fps = +$('sFps').value || 30, TT = Math.min(RANGE_T, opt.maxSec || RANGE_T), N = Math.floor(TT * fps), SR = 48000, bitrate = +$('sQ').value || 1600000;
   let vcfg = null; for (const hw of (opt._sw ? ['no-preference'] : ['prefer-hardware', 'no-preference'])) { for (const c of ['avc1.640028', 'avc1.4d0028', 'avc1.42001f']) { const cfg = { codec: c, width: W, height: H, bitrate: Math.max(bitrate, fps > 30 ? 2500000 : 0), framerate: fps, avc: { format: 'avc' }, latencyMode: 'quality', hardwareAcceleration: hw }; try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) { vcfg = cfg; break; } } catch (_) { dbg(_); } } if (vcfg) break; }   // الأفضلية لمشفّر العتاد (أسرع بكثير)

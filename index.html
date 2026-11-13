@@ -82,6 +82,10 @@
 <div class="box">
   <h3>4) التشغيل</h3>
   <div class="row"><button id="bPlay">تشغيل</button><span>ابدأ من</span><select id="sStart"></select></div>
+  <details id="dLineAud"><summary>🎤 أصوات أسطر الحوار (ملف لكل سطر بصوت صاحبه، بدل Gemini)</summary>
+    <div class="row"><label class="f" id="lLa">رفع ملفات الأسطر بالترتيب<input type="file" accept="audio/*" multiple id="fLineAud"></label><b id="laStat" style="font-size:13px;color:#f9a"></b></div>
+    <div style="font-size:13px;color:#9cf;margin:0 0 6px">تُوزَّع الملفات على كل أسطر مشاهد الحوار بترتيب المشاهد ثم الأسطر (رتّب أسماءها 01، 02، …) أو ارفع لكل سطر ملفه من القائمة. الأسطر الناقصة تُولَّد بـ Gemini إن أدخلت المفتاح، وإن اكتملت كل أسطر المشهد صار له صوت جاهز بلا مفتاح.</div>
+    <div id="lineAud"></div></details>
   <details id="dIdx"><summary>فهرس المشاهد (اضغط على مشهد للانتقال إليه)</summary><div id="idxList"></div></details>
   <div class="row">
     <label><input type="checkbox" id="cTts" checked> تعليق صوتي آلي</label>
@@ -146,7 +150,7 @@
 
 <script src="js/storage.js"></script>
 <script>
-const FILES=["js/core.js", "js/safety.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/weather.js", "js/export.js", "js/guard.js", "js/settings.js", "assets/shimg.js", "assets/walkpreset.js", "js/framecache.js", "js/backgrounds.js", "js/cast.js", "js/hologram.js", "js/decision.js", "js/perf.js", "js/timeline.js", "js/topplay.js", "js/fullscreen.js", "js/project.js", "js/package.js", "js/editor.js", "js/worlds.js", "js/packs.js", "js/tabs.js", "js/a11y.js", "js/msgtone.js"];
+const FILES=["js/core.js", "js/safety.js", "js/sheets.js", "js/walkstudio.js", "js/render.js", "js/mouth.js", "js/audio.js", "js/extras.js", "js/weather.js", "js/export.js", "js/guard.js", "js/settings.js", "assets/shimg.js", "assets/walkpreset.js", "js/framecache.js", "js/backgrounds.js", "js/cast.js", "js/lineaudio.js", "js/hologram.js", "js/decision.js", "js/perf.js", "js/timeline.js", "js/topplay.js", "js/fullscreen.js", "js/project.js", "js/package.js", "js/editor.js", "js/worlds.js", "js/packs.js", "js/tabs.js", "js/a11y.js", "js/msgtone.js"];
 Store.init().catch(e=>console.error(e)).then(()=>{FILES.forEach(f=>{const s=document.createElement('script');s.src=f;s.async=false;s.onerror=()=>{document.getElementById('msg').textContent='تعذّر تحميل '+f;const b=document.getElementById('boot');if(b)b.remove();};document.body.appendChild(s);});});
 </script>
 </body></html>
