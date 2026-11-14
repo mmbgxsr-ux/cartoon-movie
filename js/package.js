@@ -68,7 +68,7 @@
   const asBlob = async im => { if (im._f) return im._f; if (im.src && im.src.startsWith('blob:')) return (await fetch(im.src)).blob(); return null; };   // الصور الافتراضية المدمجة (data:) لا تُحفظ
   async function collect(quiet) {          // تجمع الملفات والمانيفست بلا ضغط (يستعملها التصدير والحفظ التلقائي)
     const sy = quiet ? () => {} : say;
-    const entries = [], man = { app: 'cartoon-movie', v: 2, date: new Date().toISOString(), data: {}, grids: {}, assets: { bg: [], sheets: {}, props: {}, audio: [], gen: [], lineAud: [] } };
+    const entries = [], man = { app: 'cartoon-movie', v: 2, date: new Date().toISOString(), data: {}, grids: {}, assets: { bg: [], sheets: {}, props: {}, audio: [], gen: [], lineAud: [], castSheets: {} } };
     (window.PROJECT_KEYS || []).forEach(k => { try { const v = Store.getItem(k); if (v != null) man.data[k] = v; } catch (_) { dbg(_); } });
     const add = (dir, blob, name) => { const path = dir + '/' + String(entries.length).padStart(4, '0') + '.' + ext(name, blob.type); entries.push({ path, blob }); return path; };
     sy('جاري تجميع الصور …');
@@ -79,6 +79,15 @@
       if (parts[n] && parts[n].length) { for (const p of parts[n]) { const b = await asBlob(p.im); if (b) list.push({ b, n: p.n, g: p.g, name: p.name }); } }
       else if (imgs[n]) { const b = await asBlob(imgs[n]); if (b) list.push({ b, name: b.name }); }
       if (list.length) man.assets.sheets[n] = { sep: !!(parts[n] && parts[n].length), files: list.map(x => ({ path: add('sheets', x.b, x.name), name: x.name || '', n: x.n, g: x.g })) };
+    }
+    for (const id of Object.keys(CSHEET)) {   // لوحات الشخصيات الخاصة
+      if (!CAST.some(c => c.id === id)) continue;
+      for (const pose of Object.keys(CSHEET[id])) {
+        const e = CSHEET[id][pose], list = [];
+        if (e.parts && e.parts.length) { for (const q of e.parts) { const b = await asBlob(q.im); if (b) list.push({ b, n: q.n, g: q.g, name: q.name }); } }
+        else if (e.ims && e.ims[0]) { const b = await asBlob(e.ims[0]); if (b) list.push({ b, name: b.name }); }
+        if (list.length) ((man.assets.castSheets[id] = man.assets.castSheets[id] || {})[pose] = { sep: !!(e.parts && e.parts.length), files: list.map(x => ({ path: add('castsheets', x.b, x.name), name: x.name || '', n: x.n, g: x.g })) });
+      }
     }
     for (const id of Object.keys(PROPSRC)) if (PROPSRC[id]) man.assets.props[id] = { path: add('props', PROPSRC[id], PROPSRC[id].name), name: PROPSRC[id].name || '' };
     sy('جاري تجميع الصوت …');
@@ -115,6 +124,7 @@
     const blobs = {}, A = man.assets || {}, want = [];
     (A.bg || []).forEach(x => want.push(x.path)); Object.values(A.sheets || {}).forEach(s => (s.files || []).forEach(x => want.push(x.path)));
     Object.values(A.props || {}).forEach(x => want.push(x.path)); (A.audio || []).forEach(x => want.push(x.path)); (A.gen || []).forEach(x => want.push(x.path)); (A.lineAud || []).forEach(x => want.push(x.path));
+    Object.values(A.castSheets || {}).forEach(po => Object.values(po || {}).forEach(s => (s.files || []).forEach(x => want.push(x.path))));
     let k = 0; for (const p of want) { if (typeof p !== 'string') continue; say('جاري استخراج الملفات ' + (++k) + ' / ' + want.length + ' …'); const b = await z.get(p); if (!b) throw new Error('ملف ناقص داخل الحزمة: ' + p); blobs[p] = b; }
     // نكتب الملفات المعلّقة أولًا؛ إن فشلت (ضيق مساحة مثلًا) يبقى مشروعك الحالي كما هو، ثم نستبدل الإعدادات
     const db = await pdb(); await pdo(db, 'readwrite', s => s.put({ manifest: { grids: man.grids || {}, assets: A }, blobs }, 'pkg')); db.close();
@@ -132,7 +142,7 @@
     restoredNow = true;
     // ننتظر اكتمال بناء الواجهة والوحدات واللوحات الافتراضية
     for (let i = 0; i < 100; i++) { const ready = document.getElementById('tabs').children.length > 0 && Object.keys(SH).every(n => !SHIMG[n] || imgs[n]); if (ready) break; await sleep(100); }
-    const { grids, assets: A } = pkg.manifest, B = pkg.blobs, fail = []; let nBg = 0, nSh = 0, nPr = 0, nAu = 0, nGen = 0, nLa = 0;
+    const { grids, assets: A } = pkg.manifest, B = pkg.blobs, fail = []; let nBg = 0, nSh = 0, nPr = 0, nAu = 0, nGen = 0, nLa = 0, nCs = 0;
     const step = async (label, fn) => { try { await fn(); } catch (e) { fail.push(label); console.error(label, e); } };
     msg('جاري استعادة الحزمة …');
     await step('الشبكات', async () => { Object.keys(grids || {}).forEach(n => { const c = $('gc_' + n), r = $('gr_' + n), g = grids[n]; if (c && r && Array.isArray(g) && g[0] > 0 && g[1] > 0) { c.value = g[0]; r.value = g[1]; SH[n].cols = +g[0]; SH[n].rows = eq(+g[1]); } }); });
@@ -143,6 +153,11 @@
       if (parts[n] && parts[n].length === s.files.length) { parts[n].forEach((p, i) => { if (s.files[i].n > 0) p.n = s.files[i].n; if (s.files[i].g > 0) p.g = s.files[i].g; }); build(n); renderParts(); }
       nSh++;
     });
+    for (const id of Object.keys(A.castSheets || {})) for (const pose of Object.keys(A.castSheets[id] || {})) await step('لوحة شخصية ' + id + '/' + pose, async () => {
+      const s = A.castSheets[id][pose], fs = mkFiles(s.files, B), ims = []; if (!CAST.some(c => c.id === id) || !SH[pose]) return;
+      for (const f of fs) ims.push(await loadImg(f)); await castSetSheet(id, pose, ims, fs, s.files); nCs++;
+    });
+    if (nCs && window.castRender) window.castRender();
     for (const id of Object.keys(A.props || {})) await step('بطاقة ' + id, async () => { const inp = document.querySelector('input[data-pick="' + id + '"]'); if (!inp) return; await inp.onchange({ target: { files: mkFiles([A.props[id]], B), value: '' } }); nPr++; });
     await step('الصوت', async () => { const fs = mkFiles(A.audio || [], B); if (fs.length) { $('fAud').onchange({ target: { files: fs, value: '' } }); await EMBP; nAu = SHOTS.filter(s => s.eb).length; } });
     await step('الصوت المولَّد', async () => {
@@ -159,7 +174,7 @@
       for (const i of done) if (lineAudDone(SHOTS[i]) && !custOk(SHOTS[i])) await afterLineAudio(i);
       renderLineAud();
     });
-    msg('تم استرجاع الحزمة: ' + nBg + ' خلفية، ' + nSh + ' لوحة، ' + nPr + ' بطاقة، ' + nAu + ' ملف صوت' + (nGen ? '، ' + nGen + ' مشهد صوته مولَّد' : '') + (nLa ? '، ' + nLa + ' صوت لأسطر الحوار' : '') + (fail.length ? ' — تعذّر: ' + fail.join('، ') : ''));
+    msg('تم استرجاع الحزمة: ' + nBg + ' خلفية، ' + nSh + ' لوحة، ' + nPr + ' بطاقة، ' + nAu + ' ملف صوت' + (nGen ? '، ' + nGen + ' مشهد صوته مولَّد' : '') + (nLa ? '، ' + nLa + ' صوت لأسطر الحوار' : '') + (nCs ? '، ' + nCs + ' لوحة لشخصيات' : '') + (fail.length ? ' — تعذّر: ' + fail.join('، ') : ''));
   }
 
 
@@ -174,9 +189,9 @@
   const auds = () => (typeof AUDSRC !== 'undefined' ? AUDSRC : []);
   const sigNow = () => JSON.stringify([bgs.map(isig),
     Object.keys(SH).map(n => [n, SH[n].cols, SH[n].rows.length, parts[n] && parts[n].length ? parts[n].map(p => [isig(p.im), p.n, p.g]) : isig(imgs[n])]),
-    Object.keys(PROPSRC).map(k => [k, fsig(PROPSRC[k])]), auds().map(fsig), SHOTS.map(x => x.pcm && x.gk ? x.gk + ':' + x.pcm.length : ''), SHOTS.map(x => (x.lineAud || []).map(u => u ? u.sig : ''))]);
+    Object.keys(PROPSRC).map(k => [k, fsig(PROPSRC[k])]), auds().map(fsig), SHOTS.map(x => x.pcm && x.gk ? x.gk + ':' + x.pcm.length : ''), SHOTS.map(x => (x.lineAud || []).map(u => u ? u.sig : '')), Object.keys(CSHEET).map(id => [id, Object.keys(CSHEET[id]).map(po => [po, CSHEET[id][po].parts ? CSHEET[id][po].parts.map(q => [isig(q.im), q.n, q.g]) : isig(CSHEET[id][po].ims[0])])])]);
   const blobImg = im => !!im && (!!im._f || /^blob:/.test(im.src || ''));
-  const hasAssets = () => bgs.some(blobImg) || Object.keys(SH).some(n => blobImg(imgs[n]) || (parts[n] && parts[n].length)) || Object.keys(PROPSRC).some(k => PROPSRC[k]) || auds().length > 0 || SHOTS.some(x => x.pcm && x.gk) || SHOTS.some(x => (x.lineAud || []).some(Boolean));
+  const hasAssets = () => bgs.some(blobImg) || Object.keys(SH).some(n => blobImg(imgs[n]) || (parts[n] && parts[n].length)) || Object.keys(PROPSRC).some(k => PROPSRC[k]) || auds().length > 0 || SHOTS.some(x => x.pcm && x.gk) || SHOTS.some(x => (x.lineAud || []).some(Boolean)) || Object.keys(CSHEET).some(id => Object.keys(CSHEET[id]).length);
   let lastSig = null, saving = false, paused = true, warned = false;   // paused حتى نفحص وجود لقطة قديمة، كي لا نمسحها بحالة فارغة
   const MIN_GAP = 90000; let lastSaveAt = 0;
   async function autosaveNow(force, urgent) {

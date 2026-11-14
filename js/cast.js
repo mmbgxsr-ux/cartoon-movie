@@ -127,8 +127,19 @@ function castArr(c, name, src) {
   return e.arr;
 }
 const castSeed = id => { let h = 7; for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) % 1021; return h; };   // بذرة ثابتة لكل شخصية: ترمش في لحظات مختلفة عن غيرها
+// لوحات خاصة بشخصية (بدل لوحات الشخصية الأساسية): CSHEET[id][وضعية] = { ims, parts, files, frames }. الوضعية التي لا لوحة لها تبقى بالأساسية
+const CSHEET = {};
+const castSheetFrames = (c, k) => { const e = CSHEET[c.id] && CSHEET[c.id][k]; return e && e.frames && e.frames.length ? e.frames : null; };
+async function castSetSheet(id, pose, ims, fs, meta) {
+  if (!SH[pose]) throw new Error('وضعية غير معروفة: ' + pose); if (!CAST.some(c => c.id === id)) throw new Error('شخصية غير موجودة: ' + id);
+  const md = $('sMode').value, sep = md === 'parts' || (md === 'auto' && ims.length > 1);
+  const P = sep ? ims.map((im, i) => ({ im, n: Math.max(1, (meta && meta[i] && meta[i].n) || +$('nPer').value || 2), name: fs[i].name, g: (meta && meta[i] && meta[i].g) || ($('cSame').checked ? 1 : i + 1) })) : null;
+  const out = makeFrames(pose, ims[0], P); eyesOf(pose, out);
+  (CSHEET[id] = CSHEET[id] || {})[pose] = { ims, parts: P, files: fs, frames: out };
+  CVAR.clear(); return out;
+}
 function withCast(c, fn) {
-  const keys = Object.keys(frames), saved = {}, bs = BSEED; keys.forEach(k => { saved[k] = frames[k]; frames[k] = castArr(c, k, saved[k]); }); BSEED = c.id === 'guide' ? 0 : castSeed(c.id);
+  const keys = Object.keys(frames), saved = {}, bs = BSEED; keys.forEach(k => { saved[k] = frames[k]; frames[k] = castArr(c, k, castSheetFrames(c, k) || saved[k]); }); BSEED = c.id === 'guide' ? 0 : castSeed(c.id);
   try { return fn(); } finally { keys.forEach(k => { frames[k] = saved[k]; }); BSEED = bs; }
 }
 
@@ -189,6 +200,22 @@ drawChar = function (s, tt) {
       el('div', { className: 'row', style: 'margin:0' }, [acc2, el('input', { type: 'color', title: 'لون غطاء الرأس', value: a.accColor || '#f3ead2', style: 'width:34px;height:26px;padding:0;border:0;background:none', onchange() { a.accColor = this.value; save(); } })]),
       layerRow(a)]);
   };
+  const SHEETOPEN = {};
+  const sheetBox = c => {
+    const sel = el('select', { title: 'وضعية اللوحة', 'aria-label': 'وضعية اللوحة' }); Object.keys(SH).forEach(n => sel.appendChild(el('option', { value: n, textContent: SH[n].label }))); sel.value = SHEETOPEN[c.id + ':pose'] || 'talk'; sel.onchange = () => { SHEETOPEN[c.id + ':pose'] = sel.value; };
+    const pick = el('input', { type: 'file', accept: 'image/*', multiple: true }); pick.dataset.castSheet = c.id;
+    pick.onchange = async () => {
+      const fs = [...pick.files], pose = sel.value; pick.value = ''; if (!fs.length) return;
+      try { msg('جاري إزالة الخلفية من لوحة ' + SH[pose].label + ' للشخصية …'); await sleep(40); const ims = []; for (const f of fs) ims.push(await loadImg(f)); const out = await castSetSheet(c.id, pose, ims, fs); SHEETOPEN[c.id] = true; msg('تم ربط لوحة ' + SH[pose].label + ' بـ ' + c.name + ' (' + out.length + ' وضعية)'); render(); }
+      catch (err) { dbg(err); msg('تعذّر فتح اللوحة'); }
+    };
+    const have = Object.keys(CSHEET[c.id] || {});
+    const chips = have.map(n => el('span', { className: 'csChip', style: 'display:inline-flex;gap:4px;align-items:center;background:#243142;border-radius:6px;padding:2px 6px;font-size:12px' }, [document.createTextNode(SH[n].label + ' (' + CSHEET[c.id][n].frames.length + ')'), el('button', { type: 'button', textContent: '✕', title: 'إزالة هذه اللوحة', style: 'padding:0 6px;background:#5a3a3a', onclick() { delete CSHEET[c.id][n]; CVAR.clear(); render(); } })]));
+    const d = el('details', { style: 'margin:0' }, [el('summary', { style: 'font-size:12px;color:#8ea0b5;cursor:pointer', textContent: '🧍 لوحات خاصة بهذه الشخصية' + (have.length ? ' (' + have.length + ')' : '') }),
+      el('div', { style: 'font-size:12px;color:#9cf;margin:4px 0', textContent: 'ارفع لوحة لأي وضعية (بنفس تقسيم أعمدة وصفوف اللوحة الأساسية) فتظهر بها هذه الشخصية بدل الشخصية الأساسية. الوضعيات التي لا ترفع لها لوحة تبقى بالشخصية الأساسية.' }),
+      el('div', { className: 'row', style: 'margin:0' }, [sel, el('label', { className: 'f', style: 'flex:0 1 auto' }, [document.createTextNode('رفع اللوحة '), pick])]), el('div', { className: 'row', style: 'margin:4px 0 0;gap:4px' }, chips)]);
+    d.open = !!(have.length || SHEETOPEN[c.id]); return d;
+  };
   function render() {
     box.innerHTML = ''; previews.length = 0;
     CAST.forEach((c, i) => {
@@ -200,13 +227,14 @@ drawChar = function (s, tt) {
       const fc = el('select', { title: 'اتجاه نظر صورة الشخصية' }); [['', 'اتجاه النظر: الافتراضي'], ['r', 'صورته تنظر لليمين'], ['l', 'صورته تنظر لليسار']].forEach(([v, t]) => fc.appendChild(el('option', { value: v, textContent: t }))); fc.value = c.face || ''; fc.onchange = () => { c.face = fc.value; castSave(); };
       const vo = el('select', { title: 'صوت الشخصية' }); vo.appendChild(el('option', { value: '', textContent: 'صوت المشهد الافتراضي' })); CAST_VOICES.forEach(v => vo.appendChild(el('option', { value: v, textContent: 'صوت ' + v }))); vo.value = c.voice || ''; vo.onchange = () => { c.voice = vo.value; castSave(); };
       const sc = el('input', { type: 'range', min: .85, max: 1.15, step: .01, value: c.scale || 1, style: 'width:90px', oninput() { c.scale = +this.value; castSave(); } });
-      const del = c.id === 'guide' ? el('span', { textContent: '(الأساسية)', style: 'color:#8ea0b5;font-size:12px' }) : el('button', { type: 'button', textContent: '✕', style: 'padding:4px 10px;background:#5a3a3a', onclick() { if (confirm('حذف ' + c.name + '؟')) { CAST.splice(i, 1); castSave(); render(); } } });
+      const del = c.id === 'guide' ? el('span', { textContent: '(الأساسية)', style: 'color:#8ea0b5;font-size:12px' }) : el('button', { type: 'button', textContent: '✕', style: 'padding:4px 10px;background:#5a3a3a', onclick() { if (confirm('حذف ' + c.name + '؟')) { delete CSHEET[c.id]; CAST.splice(i, 1); castSave(); render(); } } });
       box.appendChild(el('div', { className: 'row', style: 'align-items:center;border-bottom:1px solid #243142;padding-bottom:8px' }, [cv, el('div', { style: 'display:flex;flex-direction:column;gap:6px;flex:1;min-width:0' }, [
         el('div', { className: 'row', style: 'margin:0' }, [nm, del]),
         el('div', { className: 'row', style: 'margin:0' }, [colr('القميص', 'top'), colr('البنطال', 'bottom')]),
         el('div', { className: 'row', style: 'margin:0' }, [acc, accC, el('span', { textContent: 'الحجم' }), sc]),
         layerRow(c),
         el('div', { className: 'row', style: 'margin:0' }, [vo, fc]),
+        sheetBox(c),
         el('div', { style: 'font-size:12px;color:#8ea0b5' }, [document.createTextNode('الأزياء البديلة (تُختار لكل مشهد من المحرر)')]),
         ...(c.alt || []).map((a, j) => altBox(c, a, j)),
         el('button', { type: 'button', textContent: '➕ زي بديل', style: 'align-self:flex-start;padding:4px 10px;background:#3a4656', onclick() { (c.alt = c.alt || []).push({ name: 'زي ' + (c.alt.length + 1), top: c.top || '', bottom: c.bottom || '', acc: c.acc || '', accColor: c.accColor || '#f3ead2', layer: '', layerColor: '#8a6a3a' }); castSave(); render(); } })])]));

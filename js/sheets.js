@@ -388,12 +388,13 @@ function findEyes(f) {
   };
   return { lx: best.a.x, ly: best.a.y, rx: best.b.x, ry: best.b.y, d: best.dd, on: true, sk: [skin(best.a), skin(best.b)] };
 }
-function eyesAll(n) { const cfg = SH[n], fr = frames[n]; if (!fr) return; fr.forEach(f => { f.eyes = cfg.nm || cfg.ne ? null : findEyes(f); }); }
+function eyesOf(n, fr) { const cfg = SH[n]; if (!fr) return; fr.forEach(f => { f.eyes = cfg.nm || cfg.ne ? null : findEyes(f); }); }
+function eyesAll(n) { eyesOf(n, frames[n]); }
 
-function build(name) {
-  const cfg = SH[name], P = parts[name];
-  const pre = PRECUT[name]; delete PRECUT[name];
-  const out = pre || (P && P.length ? cutParts(P, cfg) : cutGrid(imgs[name], cfg, cfg.cols, cfg.rows));
+// حساب إطارات لوحة (قص + رأس + فم) دون لمس الحالة العامة: يستعملها build() وكذلك لوحات الشخصيات الخاصة (cast.js)
+function makeFrames(name, im, P, pre) {
+  const cfg = SH[name];
+  const out = pre || (P && P.length ? cutParts(P, cfg) : cutGrid(im, cfg, cfg.cols, cfg.rows));
   out.forEach(f => {
     const m = f.m; f.bb = { x0: m.x0, y0: m.y0, x1: m.x1, y1: m.y1 }; f.ax = (cfg.nm && !cfg.axl) ? m.axT : m.axL; f.hx = m.hx;
     headInfo(f); f.hx = f._hx; f.mouth = { x: f._hx, y: 0, w: 0, r: 0, on: !cfg.nm && !cfg.mm };
@@ -402,7 +403,11 @@ function build(name) {
     out.forEach(f => { let h = f.bb.y1 - f._ht; if (h < .93 * med) h = med; f._hr = h; f.mouth.y = f._ht + h * mk.y; f.mouth.w = h * mk.w; if (f.mouth.on) f.mouth.weak = !refineMouth(f); }); }   // weak = لم يُعثر على خط شفتين واضح: الموضع تقدير فقط ويحتاج مراجعة
   const hs = out.map(f => f.bb.y1 - f.bb.y0).sort((a, b) => a - b); out.ch = hs[hs.length >> 1] || 1;
   if (cfg.lift) out.forEach((f, i) => { f.lift = (cfg.lift[i] || 0) * out.ch; });
-  frames[name] = out; loadMouths(name); eyesAll(name);
+  return out;
+}
+function build(name) {
+  const pre = PRECUT[name]; delete PRECUT[name];
+  frames[name] = makeFrames(name, imgs[name], parts[name], pre); loadMouths(name); eyesAll(name);
 }
 function trim(im) {
   const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;

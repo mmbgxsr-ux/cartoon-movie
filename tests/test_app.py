@@ -1119,3 +1119,60 @@ def test_line_audio_survives_package_roundtrip(browser, base_url, page, tmp_path
     assert pg.evaluate("document.querySelector('#laStat').textContent").startswith("2 / 2")
     assert errs == []
     ctx.close()
+
+
+# ---------- لوحات خاصة بكل شخصية في الطاقم ----------
+def _cast_sheet_page(page, tmp_path, pose="point"):
+    page.evaluate("Store.setItem('cartoonScenes1', %s)" % json.dumps(json.dumps(DLG)))
+    page.evaluate("Store.setItem('cartoonCast1', %s)" % json.dumps(json.dumps(CAST2)))
+    reload(page)
+    open_tab(page, "#castAdd")
+    sheet = tmp_path / "amr_sheet.png"
+    sheet.write_bytes(_png_cells(400, 200, 2, 1))
+    page.evaluate("""pose => { const i = document.querySelector("input[data-cast-sheet='amr']"), s = i.closest('details').querySelector('select'); s.value = pose; s.dispatchEvent(new Event('change')); }""", pose)
+    page.set_input_files("input[data-cast-sheet='amr']", str(sheet))
+    page.wait_for_function("typeof CSHEET !== 'undefined' && CSHEET.amr && CSHEET.amr.%s" % pose, timeout=30000)
+    return sheet
+
+
+def test_cast_custom_sheet_replaces_only_that_pose_and_character(page, tmp_path):
+    _cast_sheet_page(page, tmp_path)
+    assert page.evaluate("CSHEET.amr.point.frames.length") == page.evaluate("SH.point.cols * SH.point.rows.length")
+    assert page.evaluate("withCast(castById('amr'), () => frames.point === CSHEET.amr.point.frames)") is True   # لوحته الخاصة
+    assert page.evaluate("withCast(castById('amr'), () => frames.talk) === frames.talk") is True                # الوضعيات الأخرى أساسية
+    assert page.evaluate("withCast(castById('guide'), () => frames.point) === frames.point") is True            # غيره لا يتأثر
+    assert page.evaluate("frames.point !== CSHEET.amr.point.frames"), "الاستعادة بعد الرسم"
+    assert page.locator(".csChip").count() == 1
+    # الرسم بها لا يُسقط شيئًا: مشهد حوار تتحدث فيه الشخصية بالوضعية المخصصة
+    page.evaluate("""() => { SHOTS[0].acts = [[0, 'point']]; idx = 0; for (const t0 of [0, 1.5, 3, 5]) { t = t0; clock += .2; tickSim(0.033); } }""")
+    page.locator(".csChip button").click()
+    assert page.evaluate("Object.keys(CSHEET.amr).length") == 0
+    assert page.evaluate("withCast(castById('amr'), () => frames.point) === frames.point") is True
+    assert page.errors == []
+
+
+def test_cast_custom_sheet_survives_package_roundtrip(browser, base_url, page, tmp_path):
+    import base64
+    import zipfile
+    _cast_sheet_page(page, tmp_path)
+    b64 = page.evaluate("""CMPack.build().then(async r => { const u = new Uint8Array(await r.blob.arrayBuffer()); let s = ''; for (let i = 0; i < u.length; i += 8192) s += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); return btoa(s); })""")
+    pkg = tmp_path / "cs.zip"
+    pkg.write_bytes(base64.b64decode(b64))
+    with zipfile.ZipFile(pkg) as z:
+        man = json.loads(z.read("manifest.json"))
+        assert len(man["assets"]["castSheets"]["amr"]["point"]["files"]) == 1
+        assert [n for n in z.namelist() if n.startswith("castsheets/")]
+    ctx = browser.new_context(accept_downloads=True)
+    pg = ctx.new_page()
+    errs = []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    pg.goto(base_url + "/index.html")
+    pg.wait_for_function("window.Store && Store.ready && typeof SHOTS !== 'undefined' && window.CMPack && CMPack.ready", timeout=20000)
+    pg.set_input_files("#fPrj", str(pkg))
+    pg.wait_for_function("typeof CSHEET !== 'undefined' && CSHEET.amr && CSHEET.amr.point && CMPack.ready", timeout=90000)
+    pg.wait_for_function("document.getElementById('msg').textContent.includes('تم استرجاع الحزمة')", timeout=30000)
+    assert "لوحة لشخصيات" in pg.evaluate("document.getElementById('msg').textContent")
+    assert pg.evaluate("CSHEET.amr.point.frames.length") == pg.evaluate("SH.point.cols * SH.point.rows.length")
+    assert pg.evaluate("withCast(castById('amr'), () => frames.point === CSHEET.amr.point.frames)") is True
+    assert errs == []
+    ctx.close()
